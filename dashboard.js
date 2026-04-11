@@ -704,9 +704,14 @@ function renderDashboardScadenze() {
   contenitore.appendChild(ul);
 }
 
-function svuotaDashboard() {
+function svuotaTuttiITask() {
   localStorage.removeItem("actionflow_archivio_azioni");
   localStorage.removeItem("actionflow_archivio_scadenze");
+  localStorage.removeItem("actionflow_checklist");
+  localStorage.removeItem("actionflow_scadenze");
+  localStorage.removeItem("actionflow_azioni_done");
+  localStorage.removeItem("actionflow_checklist_done");
+  localStorage.removeItem("actionflow_daily_plan");
   renderDashboardAzioni();
   renderDashboardScadenze();
 }
@@ -768,6 +773,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
   var bottoneSvuota = document.getElementById("bottone-svuota-dashboard");
   if (bottoneSvuota) {
-    bottoneSvuota.addEventListener("click", svuotaDashboard);
+    bottoneSvuota.addEventListener("click", svuotaTuttiITask);
   }
 });
