@@ -1,0 +1,2195 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+:root {
+  --bg-1: #f6f8fc;
+  --bg-2: #ebf2ff;
+  --surface: rgba(255, 255, 255, 0.9);
+  --surface-strong: #ffffff;
+  --text: #122033;
+  --muted: #5e6f82;
+  --line: #d6e0ec;
+  --brand: #1d5fd2;
+  --brand-strong: #164da9;
+  --danger: #cc3a3a;
+  --shadow-soft: 0 14px 36px rgba(19, 35, 65, 0.1);
+  --shadow-card: 0 8px 20px rgba(22, 45, 84, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--text);
+  margin: 0;
+  min-height: 100vh;
+  padding: 28px 16px;
+  background:
+    radial-gradient(circle at 15% 8%, rgba(29, 95, 210, 0.18), transparent 38%),
+    radial-gradient(circle at 85% 22%, rgba(16, 185, 129, 0.16), transparent 34%),
+    linear-gradient(165deg, var(--bg-1), var(--bg-2));
+}
+
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 34px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(8px);
+}
+
+.home-shell {
+  max-width: 720px;
+  padding: 24px 20px 28px;
+}
+
+.focus-page-shell {
+  max-width: 760px;
+}
+
+.home-header,
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.home-brand-row,
+.page-kicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-brand-label,
+.page-kicker {
+  margin: 0;
+  font: 700 0.75rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6a7f96;
+}
+
+.page-title {
+  margin: 0;
+}
+
+.page-subtitle {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.97rem;
+  line-height: 1.55;
+}
+
+.home-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.composer-card {
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(214, 224, 236, 0.95);
+  box-shadow: var(--shadow-card);
+}
+
+.composer-input-wrap {
+  margin-top: 0;
+}
+
+.composer-helper {
+  margin: 12px 4px 0;
+  color: #6b7d92;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.home-primary-action {
+  margin-top: 14px;
+}
+
+.home-cta-section {
+  display: flex;
+}
+
+.button-organize-day-primary {
+  margin-top: 0;
+  min-height: 56px;
+  color: #ffffff;
+  border: 0;
+  background: linear-gradient(135deg, #0f6d84 0%, #125fa5 100%);
+  box-shadow: 0 14px 28px rgba(16, 87, 125, 0.24);
+}
+
+.button-organize-day-primary:hover {
+  background: linear-gradient(135deg, #115f74 0%, #164f92 100%);
+  box-shadow: 0 16px 30px rgba(16, 87, 125, 0.28);
+}
+
+.home-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.home-nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #cbd8e8;
+  background: rgba(255, 255, 255, 0.78);
+  color: #20415f;
+  font: 600 0.88rem/1 "IBM Plex Sans", "Avenir Next", sans-serif;
+  text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.home-nav-link:hover {
+  background: #f4f8ff;
+  border-color: #9ebae0;
+  color: #123e72;
+}
+
+.home-nav-button {
+  width: auto;
+  margin-top: 0;
+}
+
+.home-greeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(243, 247, 252, 0.95);
+  border: 1px solid rgba(214, 224, 236, 0.95);
+}
+
+.home-greeting-fallback {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.home-greeting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.home-saluto,
+.home-question {
+  margin: 0;
+}
+
+.home-saluto,
+.profilo-saluto {
+  font-family: "Manrope", "Avenir Next", sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #102944;
+}
+
+.home-question {
+  color: #5c7087;
+  font-size: 0.96rem;
+  line-height: 1.45;
+}
+
+.home-results-panel {
+  display: none !important;
+}
+
+.page-header {
+  margin-bottom: 22px;
+}
+
+.page-back-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #cbd8e8;
+  background: rgba(255, 255, 255, 0.84);
+  color: #20415f;
+  font: 600 0.88rem/1 "IBM Plex Sans", "Avenir Next", sans-serif;
+  text-decoration: none;
+}
+
+.page-back-link-primary {
+  margin-top: 14px;
+  background: #f4f8ff;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(10, 21, 35, 0.62);
+  backdrop-filter: blur(4px);
+}
+
+.modal-shell {
+  width: min(100%, 720px);
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+}
+
+.modal-section {
+  margin-top: 0;
+  padding: 20px;
+  border-radius: 22px;
+  box-shadow: 0 20px 50px rgba(10, 21, 35, 0.24);
+}
+
+.modal-header {
+  align-items: center;
+}
+
+.modal-close-button {
+  width: auto;
+  min-width: 88px;
+  margin-top: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f3f7fc;
+  color: #264866;
+  border: 1px solid #d4e0ee;
+  box-shadow: none;
+}
+
+.modal-close-button:hover {
+  background: #e8f0fb;
+  box-shadow: none;
+  filter: none;
+}
+
+.modal-analysis-preview {
+  width: min(100%, 640px);
+}
+
+.analysis-preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: linear-gradient(180deg, #ffffff, #f7fbff);
+}
+
+.analysis-preview-header {
+  gap: 12px;
+}
+
+.analysis-preview-summary {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.analysis-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(56vh, 420px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.analysis-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid #dde7f2;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(20, 45, 84, 0.06);
+}
+
+.analysis-preview-text {
+  margin: 0;
+  color: #18304b;
+  font: 700 1rem/1.42 "Manrope", "Avenir Next", sans-serif;
+}
+
+.analysis-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.analysis-preview-meta .badge-data {
+  margin-left: 0;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+}
+
+.analysis-preview-meta .azione-durata,
+.analysis-preview-meta .badge-energia,
+.analysis-preview-meta .badge-priorita {
+  font-size: 0.74rem;
+}
+
+.analysis-preview-more {
+  margin: -2px 0 0;
+  color: #5d7188;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.analysis-preview-empty {
+  margin: 0;
+  color: #5d7188;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.analysis-preview-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.analysis-preview-primary,
+.analysis-preview-secondary {
+  width: 100%;
+  margin-top: 0;
+}
+
+.analysis-preview-secondary {
+  justify-content: center;
+}
+
+.piano-giornaliero-grid-modal {
+  grid-template-columns: 1fr;
+}
+
+.focus-page-section {
+  margin-top: 0;
+}
+
+.focus-grid-page {
+  grid-template-columns: 1fr;
+}
+
+.focus-empty-state {
+  text-align: left;
+}
+
+h1 {
+  margin: 0;
+  font-family: "Manrope", "Avenir Next", sans-serif;
+  font-size: clamp(2rem, 3.7vw, 2.75rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  color: #0e2a52;
+}
+
+.brand-accent {
+  color: var(--brand);
+}
+
+.sottotitolo {
+  margin: 10px 0 0;
+  max-width: 58ch;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.voice-input-wrap {
+  position: relative;
+  margin-top: 24px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 160px;
+  margin-top: 0;
+  border: 1px solid #c8d5e5;
+  border-radius: 14px;
+  padding: 14px 60px 14px 16px;
+  resize: vertical;
+  font: 500 0.98rem/1.6 "IBM Plex Sans", "Avenir Next", sans-serif;
+  color: var(--text);
+  background: var(--surface-strong);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+textarea::placeholder {
+  color: #7a8da4;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #8daee9;
+  box-shadow: 0 0 0 4px rgba(29, 95, 210, 0.13);
+}
+
+textarea.errore-campo {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 4px rgba(204, 58, 58, 0.13);
+}
+
+.voice-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 42px;
+  height: 42px;
+  margin-top: 0;
+  padding: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--brand);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #c8d5e5;
+  box-shadow: 0 8px 18px rgba(18, 45, 84, 0.12);
+}
+
+.voice-button:hover {
+  background: #f4f8ff;
+  border-color: #a7c1eb;
+  box-shadow: 0 10px 20px rgba(18, 45, 84, 0.16);
+  filter: none;
+}
+
+.voice-button.is-recording {
+  color: #ffffff;
+  background: linear-gradient(135deg, #df5a5a 0%, #bf2f45 100%);
+  border-color: #c93d51;
+  box-shadow: 0 10px 20px rgba(191, 47, 69, 0.24);
+}
+
+.voice-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(29, 95, 210, 0.14);
+}
+
+.errore {
+  margin-top: 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(204, 58, 58, 0.22);
+  background: #fff1f1;
+  color: #9b2020;
+  font-size: 0.92rem;
+}
+
+button {
+  width: 100%;
+  margin-top: 16px;
+  border: 0;
+  border-radius: 14px;
+  padding: 13px 20px;
+  font: 700 0.98rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2b78e8 0%, #1d5fd2 52%, #12489e 100%);
+  box-shadow: 0 10px 24px rgba(29, 95, 210, 0.3);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+  box-shadow: 0 14px 26px rgba(29, 95, 210, 0.35);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+.nascosto {
+  display: none;
+}
+
+#risultati {
+  margin-top: 28px;
+  display: grid;
+  gap: 16px;
+}
+
+.risultati-grid {
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+
+#bottone-checklist {
+  margin-top: 10px;
+}
+
+.container-checklist {
+  max-width: 760px;
+}
+
+.toolbar-checklist {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.button-secondario {
+  background: #ffffff;
+  color: var(--brand);
+  border: 1px solid #b8cae3;
+  box-shadow: none;
+}
+
+.button-secondario:hover {
+  box-shadow: none;
+  filter: none;
+  background: #f5f9ff;
+}
+
+.button-organize-day {
+  margin-top: 10px;
+  color: #1c5ab6;
+  border-color: #aecaef;
+  background: linear-gradient(180deg, #ffffff, #f4f8ff);
+}
+
+.button-organize-day:hover {
+  background: #edf4ff;
+}
+
+.sezione {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.sezione-piano-giornaliero {
+  margin-top: 22px;
+}
+
+.focus-section {
+  margin-top: 22px;
+  border-left: 5px solid #0f6d84;
+}
+
+.focus-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.focus-sommario {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.93rem;
+  line-height: 1.45;
+}
+
+.focus-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 14px;
+}
+
+.focus-blocco {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fbfdff;
+}
+
+.focus-blocco h3 {
+  margin: 0 0 10px;
+  font: 800 0.88rem/1.2 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.06em;
+}
+
+.focus-blocco ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.focus-blocco-ora {
+  background: linear-gradient(180deg, rgba(15, 109, 132, 0.11), rgba(255, 255, 255, 0.98));
+  border-color: rgba(15, 109, 132, 0.24);
+  box-shadow: 0 10px 22px rgba(15, 109, 132, 0.1);
+}
+
+.focus-blocco-ora h3 {
+  color: #0d6176;
+}
+
+.focus-blocco-dopo {
+  background: linear-gradient(180deg, rgba(29, 95, 210, 0.06), rgba(255, 255, 255, 0.98));
+  border-color: rgba(29, 95, 210, 0.16);
+}
+
+.focus-blocco-dopo h3 {
+  color: #1d5fd2;
+}
+
+.focus-blocco-extra {
+  background: linear-gradient(180deg, rgba(151, 162, 178, 0.08), rgba(255, 255, 255, 0.98));
+  border-color: rgba(151, 162, 178, 0.2);
+}
+
+.focus-blocco-extra h3 {
+  color: #5e6f82;
+}
+
+.focus-task-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e7eef8;
+}
+
+.focus-task-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.focus-task-item-now {
+  padding: 12px 12px 10px;
+  border: 1px solid rgba(15, 109, 132, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.focus-task-testo {
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #18304b;
+}
+
+.focus-task-item-now .focus-task-testo {
+  font-size: 1.02rem;
+  color: #10364d;
+}
+
+.focus-task-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.focus-blocco-ora .focus-task-item {
+  padding-top: 0;
+}
+
+.piano-giornaliero-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.piano-giornaliero-sommario {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.93rem;
+  line-height: 1.45;
+}
+
+.piano-giornaliero-vuoto {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f6f9ff;
+  border: 1px dashed #c8d8ef;
+  color: #58708e;
+  font-size: 0.95rem;
+}
+
+.piano-giornaliero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.piano-blocco {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fbfdff;
+}
+
+.piano-blocco h3 {
+  margin: 0 0 10px;
+  font: 800 0.94rem/1.2 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.piano-blocco ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.piano-blocco-mattina {
+  background: linear-gradient(180deg, rgba(32, 177, 114, 0.08), rgba(255, 255, 255, 0.96));
+  border-color: rgba(32, 177, 114, 0.22);
+}
+
+.piano-blocco-mattina h3 {
+  color: #15774d;
+}
+
+.piano-blocco-pomeriggio {
+  background: linear-gradient(180deg, rgba(232, 159, 45, 0.08), rgba(255, 255, 255, 0.96));
+  border-color: rgba(232, 159, 45, 0.22);
+}
+
+.piano-blocco-pomeriggio h3 {
+  color: #9b620b;
+}
+
+.piano-blocco-extra {
+  background: linear-gradient(180deg, rgba(45, 117, 224, 0.07), rgba(255, 255, 255, 0.96));
+  border-color: rgba(45, 117, 224, 0.2);
+}
+
+.piano-blocco-extra h3 {
+  color: #1d58ad;
+}
+
+.piano-task-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 0;
+  border-bottom: 1px solid #e7eef8;
+}
+
+.piano-task-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.piano-task-testo {
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #18304b;
+}
+
+.piano-task-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sezione h2 {
+  margin: 0 0 12px;
+  font: 800 1.08rem/1.2 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.sezione ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sezione ul li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid #e9eef6;
+  font-size: 0.97rem;
+  line-height: 1.5;
+  color: #1e2e42;
+}
+
+/* Azioni: più importanti e leggibili */
+#box-azioni {
+  border-left-width: 6px;
+  box-shadow: 0 12px 24px rgba(18, 94, 64, 0.1);
+}
+
+#box-azioni h2 {
+  font-size: 1.14rem;
+}
+
+#box-azioni ul li {
+  padding: 11px 0;
+  font-size: 0.99rem;
+  font-weight: 500;
+  color: #163125;
+  border-left: 4px solid transparent;
+  padding-left: 10px;
+  border-radius: 10px;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+#box-azioni ul li:hover {
+  background: #f7fbff;
+  transform: translateX(2px);
+}
+
+#box-azioni .azione-testo {
+  flex: 1;
+}
+
+.badge-priorita {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font: 700 0.7rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.priorita-alta {
+  border-left-color: #d64545;
+}
+
+.priorita-media {
+  border-left-color: #dfad3a;
+}
+
+.priorita-bassa {
+  border-left-color: #97a2b2;
+}
+
+.badge-priorita.priorita-alta {
+  color: #8f2424;
+  border-color: #efb0b0;
+  background: #fff1f1;
+}
+
+.badge-priorita.priorita-media {
+  color: #8b5f06;
+  border-color: #f0d38f;
+  background: #fff8e6;
+}
+
+.badge-priorita.priorita-bassa {
+  color: #4f5c6f;
+  border-color: #cad2de;
+  background: #f3f5f8;
+}
+
+.gruppo-priorita {
+  margin-bottom: 14px;
+  padding: 10px 12px 6px;
+  border-radius: 12px;
+}
+
+.gruppo-priorita:last-child {
+  margin-bottom: 0;
+}
+
+.gruppo-alta {
+  background: rgba(214, 69, 69, 0.05);
+  border: 1px solid rgba(214, 69, 69, 0.15);
+}
+
+.gruppo-media {
+  background: rgba(223, 173, 58, 0.05);
+  border: 1px solid rgba(223, 173, 58, 0.15);
+}
+
+.gruppo-bassa {
+  background: rgba(151, 162, 178, 0.06);
+  border: 1px solid rgba(151, 162, 178, 0.15);
+}
+
+.titolo-gruppo {
+  margin: 0 0 6px;
+  font: 700 0.82rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.titolo-gruppo-alta {
+  color: #b83030;
+}
+
+.titolo-gruppo-media {
+  color: #9b6e08;
+}
+
+.titolo-gruppo-bassa {
+  color: #6b7a8f;
+}
+
+.gruppo-priorita ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.azione-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.azione-contenuto {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.azione-checkbox {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.8px solid #90abd0;
+  background: #ffffff;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.16s ease;
+}
+
+.azione-checkbox:checked {
+  border-color: #1d5fd2;
+  background: #1d5fd2;
+}
+
+.azione-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 4px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.azione-item label {
+  cursor: pointer;
+  flex: 1;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.azione-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.azione-durata {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 0;
+  color: #687b91;
+  font-size: 0.79rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.azione-durata::before {
+  content: "Tempo";
+  margin-right: 5px;
+  color: #8a9bb0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.badge-energia {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font: 700 0.71rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.badge-energia-bassa {
+  color: #246147;
+  border-color: #b8dfcb;
+  background: #edf9f2;
+}
+
+.badge-energia-media {
+  color: #8b5f06;
+  border-color: #f0d38f;
+  background: #fff8e6;
+}
+
+.badge-energia-alta {
+  color: #8f2424;
+  border-color: #efb0b0;
+  background: #fff1f1;
+}
+
+.azione-completata label {
+  text-decoration: line-through;
+  color: #8a9bb5;
+  opacity: 0.65;
+}
+
+.azione-completata .azione-durata,
+.azione-completata .badge-energia {
+  opacity: 0.6;
+}
+
+.azione-completata .badge-priorita,
+.azione-completata .badge-data {
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .azione-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .azione-contenuto {
+    width: calc(100% - 32px);
+  }
+
+  .btn-modifica {
+    margin-left: 28px;
+    width: auto;
+  }
+}
+
+/* Scadenze: più compatte */
+#box-scadenze ul li {
+  padding: 7px 0;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: #3f3a2b;
+}
+
+#box-scadenze {
+  padding-bottom: 14px;
+}
+
+#bottone-esporta-eventi {
+  width: auto;
+  min-width: 170px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font: 700 0.86rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.01em;
+  color: #8c5205;
+  background: linear-gradient(180deg, #fff7e8, #ffefcc);
+  border: 1px solid #f5cb8f;
+  box-shadow: 0 4px 10px rgba(232, 159, 45, 0.18);
+}
+
+#bottone-esporta-eventi:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(232, 159, 45, 0.24);
+  filter: none;
+}
+
+.sezione ul li:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.verde {
+  border-left: 5px solid #20b172;
+}
+
+.verde h2 {
+  color: #15774d;
+}
+
+.arancio {
+  border-left: 5px solid #e89f2d;
+}
+
+.arancio h2 {
+  color: #9b620b;
+}
+
+.blu {
+  border-left: 5px solid #2d75e0;
+}
+
+.blu h2 {
+  color: #1d58ad;
+}
+
+.checklist-item {
+  align-items: flex-start;
+  gap: 11px;
+  padding: 9px 0;
+  border-left: 4px solid transparent;
+  padding-left: 10px;
+  border-radius: 10px;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.checklist-item:hover {
+  background: #f7fbff;
+}
+
+.checklist-item input[type="checkbox"] {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 6px;
+  border: 1.8px solid #90abd0;
+  background: #ffffff;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.16s ease;
+}
+
+.checklist-item input[type="checkbox"]:checked {
+  border-color: #1d5fd2;
+  background: #1d5fd2;
+}
+
+.checklist-item input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 4px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checklist-item label {
+  cursor: pointer;
+  color: #1c2b3d;
+  font-size: 0.97rem;
+  line-height: 1.5;
+}
+
+.checklist-item input[type="checkbox"]:checked + label {
+  text-decoration: line-through;
+  color: #708199;
+}
+
+.badge-data {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #f5cb8f;
+  background: linear-gradient(180deg, #fff7e8, #ffefcc);
+  color: #8c5205;
+  font: 700 0.7rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 700px) {
+  body {
+    padding: 14px;
+  }
+
+  .container {
+    padding: 22px 16px;
+    border-radius: 16px;
+  }
+
+  .home-shell {
+    padding: 18px 14px 22px;
+  }
+
+  h1 {
+    font-size: clamp(1.8rem, 9vw, 2.3rem);
+  }
+
+  textarea {
+    min-height: 142px;
+  }
+
+  .sezione {
+    padding: 15px 14px 13px;
+  }
+
+  .risultati-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .piano-giornaliero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .focus-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-greeting,
+  .page-header,
+  .modal-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .home-nav {
+    flex-direction: column;
+  }
+
+  .home-nav-link,
+  .page-back-link {
+    width: 100%;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .modal-shell {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+  }
+
+  .modal-section {
+    border-radius: 20px 20px 0 0;
+    padding: 18px 14px 20px;
+  }
+
+  .analysis-preview-list {
+    max-height: 50vh;
+  }
+
+  .analysis-preview-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-checklist,
+  .toolbar-home {
+    grid-template-columns: 1fr;
+  }
+
+  .scadenza-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- Dashboard ---- */
+
+.toolbar-home {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.container-dashboard {
+  max-width: 960px;
+}
+
+.dashboard-page-shell {
+  max-width: 1120px;
+  padding: 24px 20px 26px;
+}
+
+.dashboard-page-header {
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.dashboard-page-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-page-actions .page-back-link,
+.dashboard-page-actions #bottone-svuota-dashboard {
+  width: auto;
+  margin-top: 0;
+}
+
+.dashboard-profile-bar {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(243, 247, 252, 0.96);
+}
+
+.dashboard-profile-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dashboard-profile-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.dashboard-controls-card {
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
+.dashboard-filters-panel {
+  border-radius: 16px;
+}
+
+.dashboard-filters-panel summary {
+  list-style: none;
+}
+
+.dashboard-filters-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboard-filters-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.dashboard-filters-summary h2 {
+  margin-bottom: 0;
+}
+
+.dashboard-filters-summary-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #d6e2ef;
+  background: #f7fbff;
+  color: #47617d;
+  font: 700 0.74rem/1 "Manrope", "Avenir Next", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dashboard-filters-panel[open] .dashboard-filters-summary-indicator {
+  background: #edf4ff;
+  border-color: #b9cfec;
+  color: #184c8c;
+}
+
+.dashboard-filters-panel[open] .dashboard-filters-summary-indicator::before {
+  content: "Chiudi";
+}
+
+.dashboard-filters-panel:not([open]) .dashboard-filters-summary-indicator {
+  color: transparent;
+  position: relative;
+}
+
+.dashboard-filters-panel:not([open]) .dashboard-filters-summary-indicator::before {
+  content: "Apri";
+  color: #47617d;
+  position: absolute;
+}
+
+.dashboard-controls-copy,
+.dashboard-section-copy {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.dashboard-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.dashboard-filter-group {
+  min-width: 0;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #f8fbff;
+  border: 1px solid #dde7f2;
+}
+
+.dashboard-filter-toggle-group {
+  justify-content: space-between;
+}
+
+.filtro-opzioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filtro-btn {
+  min-height: 38px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.filtro-btn.attivo {
+  box-shadow: 0 8px 18px rgba(29, 95, 210, 0.18);
+}
+
+.dashboard-filter-toggle {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #dde7f2;
+}
+
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.95fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.dashboard-main-card,
+.dashboard-side-card {
+  padding: 18px;
+}
+
+.dashboard-section-header {
+  margin-bottom: 14px;
+}
+
+.dashboard-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashboard-task-list .gruppo-priorita {
+  margin-bottom: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.dashboard-task-list .gruppo-priorita ul {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashboard-task-list .azione-item {
+  padding: 0;
+  border: 0;
+  border-left: 0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 5px 16px rgba(20, 45, 84, 0.05);
+  overflow: hidden;
+  transition: box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.dashboard-task-list .azione-item:hover {
+  transform: none;
+  box-shadow: 0 8px 20px rgba(20, 45, 84, 0.07);
+}
+
+.dashboard-task-details {
+  width: 100%;
+}
+
+.dashboard-task-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 12px 12px 11px;
+  cursor: pointer;
+}
+
+.dashboard-task-summary:focus-visible {
+  outline: 2px solid rgba(29, 95, 210, 0.28);
+  outline-offset: -2px;
+}
+
+.dashboard-task-check {
+  padding-top: 2px;
+}
+
+.dashboard-task-list .azione-contenuto {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-task-list .azione-testo {
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.34;
+  color: #162f4a;
+}
+
+.dashboard-task-list .azione-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashboard-task-deadline-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-task-list .badge-data {
+  margin-left: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #8f5608;
+  letter-spacing: 0.01em;
+}
+
+.dashboard-task-list .badge-priorita {
+  font-size: 0.64rem;
+  padding: 2px 7px;
+  opacity: 0.78;
+}
+
+.dashboard-task-list .dashboard-azione-durata,
+.dashboard-task-list .badge-energia {
+  opacity: 1;
+}
+
+.dashboard-task-list .azione-checkbox {
+  width: 18px;
+  height: 18px;
+  margin-top: 0;
+}
+
+.dashboard-task-meta {
+  gap: 6px;
+}
+
+.dashboard-task-meta .badge-priorita {
+  margin-left: 0;
+}
+
+.dashboard-task-expand-indicator {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  flex-shrink: 0;
+  opacity: 0.72;
+}
+
+.dashboard-task-expand-indicator::before,
+.dashboard-task-expand-indicator::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: #70839a;
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.dashboard-task-expand-indicator::before {
+  left: 2px;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.dashboard-task-expand-indicator::after {
+  right: 2px;
+  transform: translateY(-50%) rotate(-45deg);
+}
+
+.dashboard-task-details[open] .dashboard-task-expand-indicator::before {
+  transform: translateY(-50%) rotate(-45deg);
+}
+
+.dashboard-task-details[open] .dashboard-task-expand-indicator::after {
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.dashboard-task-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 12px 40px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.dashboard-task-body-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 10px;
+}
+
+.dashboard-task-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.dashboard-task-list .btn-modifica {
+  margin-left: 0;
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 999px;
+}
+
+.dashboard-task-list .azione-item.azione-completata {
+  background: linear-gradient(180deg, rgba(247, 250, 253, 0.98), rgba(255, 255, 255, 0.9));
+  box-shadow: none;
+  opacity: 0.88;
+}
+
+.dashboard-task-list .azione-item.azione-completata:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.dashboard-task-list .azione-item.azione-completata .azione-testo {
+  text-decoration: line-through;
+  color: #6f8096;
+}
+
+.dashboard-task-list .azione-item.azione-completata .dashboard-task-meta,
+.dashboard-task-list .azione-item.azione-completata .btn-modifica,
+.dashboard-task-list .azione-item.azione-completata .azione-checkbox,
+.dashboard-task-list .azione-item.azione-completata .dashboard-task-expand-indicator {
+  opacity: 0.8;
+}
+
+.dashboard-task-list .azione-item.azione-completata .badge-data {
+  color: #6b7888;
+}
+
+.dashboard-side-card {
+  position: sticky;
+  top: 18px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.lista-scadenze-dashboard {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scadenza-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fafcff;
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(20, 45, 84, 0.05);
+}
+
+.scadenza-azione-testo {
+  flex: 1;
+  font-size: 0.95rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.dashboard-task-content {
+  gap: 6px;
+}
+
+.dashboard-task-meta {
+  gap: 7px;
+}
+
+.dashboard-azione-durata {
+  font-size: 0.74rem;
+  color: #6f8195;
+}
+
+.dashboard-azione-durata::before {
+  font-size: 0.68rem;
+  color: #92a1b2;
+}
+
+.dashboard-task-meta .badge-energia {
+  font-size: 0.66rem;
+  padding: 3px 7px;
+}
+
+.dashboard-badge-data {
+  margin-left: 0;
+  font-size: 0.84rem;
+}
+
+.dashboard-task-secondary-copy {
+  color: #7c8ea3;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+#bottone-svuota-dashboard {
+  background: #fff4f4;
+  color: #a72a2a;
+  border: 1px solid #efc0c0;
+  box-shadow: none;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+#bottone-svuota-dashboard:hover {
+  background: #feeaea;
+  border-color: #e49e9e;
+  color: #962222;
+}
+
+/* ---- Filtri dashboard ---- */
+
+.filtri-dashboard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  align-items: center;
+  margin: 14px 0 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+}
+
+.filtro-gruppo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filtro-label {
+  font-family: "Manrope", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.filtro-opzioni {
+  display: flex;
+  gap: 4px;
+}
+
+.filtro-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.filtro-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.filtro-btn.attivo {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.filtro-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filtro-toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+/* ---- Google Calendar button ---- */
+
+.scadenza-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.btn-gcal {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid #c5d4e8;
+  background: #f0f6ff;
+  color: var(--brand);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.btn-gcal:hover {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+/* ---- Profilo locale ---- */
+
+.barra-profilo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+
+.profilo-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profilo-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-family: "Manrope", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.profilo-saluto {
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.profilo-azioni {
+  display: flex;
+  gap: 6px;
+}
+
+.profilo-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.profilo-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.profilo-btn-reset:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+@media (max-width: 700px) {
+  .filtri-dashboard {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .barra-profilo {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .dashboard-page-shell {
+    padding: 18px 14px 22px;
+  }
+
+  .dashboard-page-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .dashboard-page-actions .page-back-link,
+  .dashboard-page-actions #bottone-svuota-dashboard {
+    width: 100%;
+  }
+
+  .dashboard-filters-grid,
+  .dashboard-layout,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-filters-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-filters-summary-indicator {
+    width: 100%;
+  }
+
+  .dashboard-side-card {
+    position: static;
+  }
+
+  .dashboard-task-list .azione-item {
+    border-radius: 16px;
+  }
+
+  .dashboard-task-list .badge-data {
+    font-size: 0.82rem;
+  }
+
+  .dashboard-task-list .btn-modifica {
+    width: 100%;
+  }
+
+  .dashboard-task-summary {
+    grid-template-columns: auto minmax(0, 1fr) 18px;
+    padding: 12px 11px 11px;
+  }
+
+  .dashboard-task-body {
+    padding: 0 11px 11px 37px;
+  }
+
+  .scadenza-row {
+    align-items: flex-start;
+  }
+}
+
+/* ---- Modifica inline ---- */
+
+.btn-modifica {
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.73rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  flex-shrink: 0;
+}
+
+.btn-modifica:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.btn-salva-edit {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: none;
+  background: var(--brand);
+  color: #fff;
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease;
+  flex-shrink: 0;
+}
+
+.btn-salva-edit:hover {
+  background: var(--brand-strong);
+}
+
+.azione-edit-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f9ff;
+  border: 1px solid var(--brand);
+}
+
+.edit-input {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.88rem;
+  color: var(--text);
+  background: var(--surface-strong);
+  transition: border-color 0.14s ease;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.edit-input-testo {
+  flex: 1;
+  min-width: 160px;
+}
+
+.edit-input-data {
+  width: 150px;
+}
+
+.edit-select {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface-strong);
+  cursor: pointer;
+}
+
+.edit-select:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.edit-label-testo {
+  font-size: 0.92rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+@media (max-width: 700px) {
+  .azione-edit-mode {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .edit-input-testo,
+  .edit-input-data {
+    width: 100%;
+    min-width: 0;
+  }
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Focus | ActionFlow</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container focus-page-shell">
+    <header class="page-header">
+      <div>
+        <p class="page-kicker">Assistente personale</p>
+        <h1 class="page-title">Focus</h1>
+        <p class="page-subtitle">Solo quello che conta adesso.</p>
+      </div>
+      <a class="page-back-link" href="index.html">Torna alla home</a>
+    </header>
+
+    <section id="sezione-focus" class="sezione focus-section focus-page-section nascosto">
+      <div class="focus-header">
+        <div>
+          <h2>Cosa fare ora</h2>
+          <p id="focus-sommario" class="focus-sommario"></p>
+        </div>
+      </div>
+
+      <div class="focus-grid focus-grid-page">
+        <div id="focus-blocco-ora" class="focus-blocco focus-blocco-ora nascosto">
+          <h3>ORA</h3>
+          <ul id="focus-lista-ora"></ul>
+        </div>
+
+        <div id="focus-blocco-dopo" class="focus-blocco focus-blocco-dopo nascosto">
+          <h3>DOPO</h3>
+          <ul id="focus-lista-dopo"></ul>
+        </div>
+
+        <div id="focus-blocco-extra" class="focus-blocco focus-blocco-extra nascosto">
+          <h3>SE AVANZA TEMPO</h3>
+          <ul id="focus-lista-extra"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="focus-empty-state" class="sezione focus-empty-state nascosto">
+      <h2>Nessun piano disponibile</h2>
+      <p class="page-subtitle">Organizza la giornata dalla home per vedere qui i task prioritari.</p>
+      <a class="page-back-link page-back-link-primary" href="index.html">Vai alla home</a>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

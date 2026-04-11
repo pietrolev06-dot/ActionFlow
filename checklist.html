@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checklist | ActionFlow</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="container container-checklist">
+    <h1>Checklist</h1>
+    <p class="sottotitolo">Task estratti dalle azioni pulite di ActionFlow.</p>
+
+    <div class="toolbar-checklist">
+      <button type="button" class="button-secondario" onclick="window.location.href='index.html'">Torna a ActionFlow</button>
+      <button type="button" id="bottone-svuota-checklist">Svuota checklist</button>
+    </div>
+
+    <div class="sezione blu" id="box-checklist-pagina">
+      <h2>Task</h2>
+      <ul id="lista-checklist"></ul>
+      <p id="checklist-vuota" class="sottotitolo nascosto">Nessuna azione disponibile. Torna alla home e analizza un testo.</p>
+    </div>
+  </div>
+
+  <script src="checklist.js"></script>
+</body>
+</html>

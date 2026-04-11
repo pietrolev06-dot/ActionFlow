@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ActionFlow</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="container home-shell">
+
+    <header class="home-header">
+      <div class="home-brand-row">
+        <span class="home-brand-label">Assistente personale</span>
+        <h1>Action<span class="brand-accent">Flow</span></h1>
+      </div>
+
+      <div id="barra-profilo" class="barra-profilo home-greeting nascosto">
+        <div class="profilo-info">
+          <span class="profilo-avatar"></span>
+          <div class="home-greeting-copy">
+            <span class="profilo-saluto"></span>
+            <p class="home-question">Cosa vuoi fare oggi?</p>
+          </div>
+        </div>
+        <div class="profilo-azioni">
+          <button type="button" id="btn-modifica-profilo" class="profilo-btn">Modifica</button>
+          <button type="button" id="btn-reset-profilo" class="profilo-btn profilo-btn-reset">Reset</button>
+        </div>
+      </div>
+
+      <div id="home-greeting-fallback" class="home-greeting home-greeting-fallback">
+        <p class="home-saluto">ActionFlow</p>
+        <p class="home-question">Cosa vuoi fare oggi?</p>
+      </div>
+    </header>
+
+    <main class="home-main">
+      <section class="composer-card">
+        <div class="voice-input-wrap composer-input-wrap">
+          <textarea id="testo-input" placeholder="Scrivi qui quello che devi fare, oppure parla. Esempio: domani devo chiamare Marco"></textarea>
+          <button id="bottone-microfono" class="voice-button" type="button" onclick="startVoiceInput()" aria-label="Avvia input vocale" title="Input vocale">🎙️</button>
+        </div>
+
+        <div id="messaggio-errore" class="errore nascosto">
+          Scrivi qualcosa nel campo di testo prima di continuare.
+        </div>
+
+        <button id="bottone-analizza" class="home-primary-action" onclick="analizzaTesto()">Analizza</button>
+        <p class="composer-helper">Scrivi o parla in modo naturale. Es: domani devo chiamare Marco</p>
+      </section>
+
+      <section class="home-cta-section">
+        <button id="bottone-organizza-giornata" class="button-organize-day button-organize-day-primary" type="button" onclick="organizeDay()">Organizza giornata</button>
+      </section>
+
+      <nav class="home-nav" aria-label="Navigazione principale">
+        <a class="home-nav-link" href="focus.html">Focus</a>
+        <a class="home-nav-link" href="dashboard.html">Dashboard</a>
+        <button id="bottone-checklist" class="home-nav-link home-nav-button nascosto" type="button" onclick="window.location.href='checklist.html'">Checklist</button>
+        <button id="bottone-dashboard" class="nascosto" type="button" onclick="window.location.href='dashboard.html'">Apri dashboard</button>
+      </nav>
+    </main>
+
+    <section id="risultati" class="nascosto home-results-panel">
+      <div id="box-azioni" class="sezione verde home-results-card">
+        <h2>Azioni da fare</h2>
+        <div id="contenitore-azioni"></div>
+      </div>
+
+      <div id="box-scadenze" class="sezione arancio home-results-card">
+        <h2>Scadenze</h2>
+        <ul id="lista-scadenze"></ul>
+        <button id="bottone-esporta-eventi" type="button">Esporta eventi</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="modal-organizza-giornata" class="modal-overlay nascosto" aria-hidden="true">
+    <div class="modal-shell modal-piano-giornaliero" role="dialog" aria-modal="true" aria-labelledby="titolo-piano-giornaliero">
+      <div id="sezione-piano-giornaliero" class="sezione blu sezione-piano-giornaliero modal-section">
+        <div class="piano-giornaliero-header modal-header">
+          <div>
+            <h2 id="titolo-piano-giornaliero">Piano di oggi</h2>
+            <p id="piano-giornaliero-sommario" class="piano-giornaliero-sommario"></p>
+          </div>
+          <button id="bottone-chiudi-piano" class="modal-close-button" type="button" aria-label="Chiudi piano">Chiudi</button>
+        </div>
+
+        <p id="piano-giornaliero-vuoto" class="piano-giornaliero-vuoto nascosto">Nessun task attivo disponibile per organizzare la giornata.</p>
+
+        <div id="piano-giornaliero-grid" class="piano-giornaliero-grid piano-giornaliero-grid-modal">
+          <div id="blocco-mattina" class="piano-blocco piano-blocco-mattina nascosto">
+            <h3>Mattina</h3>
+            <ul id="lista-mattina"></ul>
+          </div>
+
+          <div id="blocco-pomeriggio" class="piano-blocco piano-blocco-pomeriggio nascosto">
+            <h3>Pomeriggio</h3>
+            <ul id="lista-pomeriggio"></ul>
+          </div>
+
+          <div id="blocco-se-avanza-tempo" class="piano-blocco piano-blocco-extra nascosto">
+            <h3>Se avanza tempo</h3>
+            <ul id="lista-se-avanza-tempo"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-anteprima-analisi" class="modal-overlay nascosto" aria-hidden="true">
+    <div class="modal-shell modal-analysis-preview" role="dialog" aria-modal="true" aria-labelledby="titolo-anteprima-analisi">
+      <div class="sezione verde modal-section analysis-preview-section">
+        <div class="modal-header analysis-preview-header">
+          <div>
+            <h2 id="titolo-anteprima-analisi">Ho trovato queste attivita</h2>
+            <p id="analysis-preview-summary" class="analysis-preview-summary">Controlla le attivita prima di aggiungerle.</p>
+          </div>
+          <button id="bottone-chiudi-anteprima" class="modal-close-button" type="button" aria-label="Chiudi anteprima">Chiudi</button>
+        </div>
+
+        <div id="analysis-preview-list" class="analysis-preview-list"></div>
+        <p id="analysis-preview-empty" class="analysis-preview-empty nascosto">Non ho trovato attivita chiare da aggiungere.</p>
+
+        <div class="analysis-preview-actions">
+          <button id="bottone-aggiungi-tutto" class="home-primary-action analysis-preview-primary" type="button">Aggiungi tutto</button>
+          <button id="bottone-annulla-anteprima" class="modal-close-button analysis-preview-secondary" type="button">Chiudi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+
+</body>
+</html>
