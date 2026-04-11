@@ -771,12 +771,53 @@ function canAddTaskToSlot(task, slotName, planSections) {
   return getSlotConstraintReason(task, slotName, planSections) === null;
 }
 
-function shouldReserveForExtraTime(task) {
+function hasVagueDeadline(task) {
+  var scadenza = (task && task.scadenzaOriginale ? task.scadenzaOriginale : "").toLowerCase().trim();
+
+  if (!scadenza) return false;
+
+  return /quando\s+ho\s+tempo|questa\s+settimana|tra\s+qualche\s+giorno|nei\s+prossimi\s+giorni|piu\s+avanti|più\s+avanti|entro\s+il\s+mese|settimana\s+prossima/.test(scadenza);
+}
+
+function isLowPriorityFlexibleTask(task) {
   var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
   var priorita = getDynamicPriority(task);
 
-  if (giorni === 1) return true;
-  if (task.energiaStimata === "bassa" && giorni === null && priorita !== "alta") return true;
+  if (hasVagueDeadline(task)) return true;
+  if (giorni === null && priorita === "bassa") return true;
+  return false;
+}
+
+function isConcreteShortDeadlineTask(task) {
+  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+
+  if (hasVagueDeadline(task)) return false;
+  return giorni !== null && giorni >= 0 && giorni <= 3;
+}
+
+function isImportantFutureTask(task) {
+  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+  var priorita = getDynamicPriority(task);
+
+  if (hasVagueDeadline(task)) return false;
+  if (giorni === null || giorni <= 3) return false;
+  if (priorita === "alta" || priorita === "media") return true;
+  return task && task.energiaStimata === "alta";
+}
+
+function isImportantUndatedTask(task) {
+  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+  var priorita = getDynamicPriority(task);
+
+  if (hasVagueDeadline(task)) return false;
+  if (giorni !== null) return false;
+  if (priorita === "alta") return true;
+  if (priorita === "media" && (task.energiaStimata === "alta" || isPreparatoryTask(task))) return true;
+  return false;
+}
+
+function shouldReserveForExtraTime(task) {
+  if (isLowPriorityFlexibleTask(task)) return true;
   return false;
 }
 
@@ -787,18 +828,11 @@ function isDueTodayTask(task) {
 }
 
 function isUsefulUndatedTask(task) {
-  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
-  var priorita = getDynamicPriority(task);
-
-  if (giorni !== null) return false;
-  if (isPreparatoryTask(task)) return true;
-  if (priorita === "alta") return true;
-  if (priorita === "media" && isVeryShortTask(task)) return true;
-  return false;
+  return isImportantUndatedTask(task);
 }
 
 function isUrgentPrimaryTask(task) {
-  if (isDueTodayTask(task)) return true;
+  if (isConcreteShortDeadlineTask(task)) return true;
   return isUsefulUndatedTask(task);
 }
 
@@ -813,6 +847,8 @@ function canFutureTaskAppearToday(task) {
   var priorita = getDynamicPriority(task);
 
   if (giorni === null || giorni <= 0) return false;
+  if (hasVagueDeadline(task)) return false;
+  if (isImportantFutureTask(task)) return true;
   if (isPreparatoryTask(task)) return true;
   if (isVeryShortTask(task) && (giorni === 1 || priorita === "alta" || priorita === "media")) return true;
   return false;
@@ -877,7 +913,7 @@ function assignPrimaryTasks(tasks) {
 
       slotChoice = chooseSlotForTask(task, planSections);
       if (!slotChoice.slot) {
-        if (isUrgentPrimaryTask(task)) {
+        if (isUrgentPrimaryTask(task) || isConcreteShortDeadlineTask(task)) {
           blockedUrgentTasks++;
         }
         logDailyPlanDebug(task, "escluso_dal_piano_principale", listName + ": " + slotChoice.reason);
@@ -892,30 +928,46 @@ function assignPrimaryTasks(tasks) {
 
   var urgentTasks = [];
   var futureMonitoringTasks = [];
-  var fallbackUndatedTasks = [];
-  var fallbackFutureTasks = [];
+  var fallbackImportantFutureTasks = [];
+  var fallbackImportantUndatedTasks = [];
 
   for (var i = 0; i < tasks.length; i++) {
+    if (isLowPriorityFlexibleTask(tasks[i])) {
+      logDailyPlanDebug(tasks[i], "escluso_dal_piano_principale", "task flessibile o con scadenza vaga: riservato a seAvanzaTempo");
+      continue;
+    }
+
     if (isUrgentPrimaryTask(tasks[i])) {
       urgentTasks.push(tasks[i]);
-    } else if (getTaskDaysFromToday(tasks[i] && tasks[i].dataISO ? tasks[i].dataISO : null) === null) {
-      fallbackUndatedTasks.push(tasks[i]);
-    } else {
-      futureMonitoringTasks.push(tasks[i]);
-      if (canFutureTaskAppearToday(tasks[i])) {
-        fallbackFutureTasks.push(tasks[i]);
-      }
+      continue;
     }
+
+    if (isImportantFutureTask(tasks[i])) {
+      futureMonitoringTasks.push(tasks[i]);
+      fallbackImportantFutureTasks.push(tasks[i]);
+      continue;
+    }
+
+    if (isImportantUndatedTask(tasks[i])) {
+      fallbackImportantUndatedTasks.push(tasks[i]);
+      continue;
+    }
+
+    if (isFutureMonitoringTask(tasks[i])) {
+      futureMonitoringTasks.push(tasks[i]);
+    }
+
+    logDailyPlanDebug(tasks[i], "escluso_dal_piano_principale", "task futuro non abbastanza importante per il piano principale");
   }
 
-  tryAssignFromList(urgentTasks, "task_di_oggi");
+  tryAssignFromList(urgentTasks, "task_scadenza_reale");
 
   if (selectedTasks.length < DAILY_PLAN_MAX_TASKS) {
-    tryAssignFromList(fallbackUndatedTasks, "fallback_senza_data");
+    tryAssignFromList(fallbackImportantFutureTasks, "fallback_task_futuri_importanti");
   }
 
   if (selectedTasks.length < DAILY_PLAN_MAX_TASKS) {
-    tryAssignFromList(fallbackFutureTasks, "fallback_future_preparatori");
+    tryAssignFromList(fallbackImportantUndatedTasks, "fallback_task_senza_data_importanti");
   }
 
   return {
@@ -940,6 +992,12 @@ function buildExtraTimeTasks(sortedTasks, selectedTasks) {
     var urgente = giorni !== null && giorni <= 3;
     var leggero = isVeryShortTask(task) || getTaskEnergyValue(task.energiaStimata) <= 2;
     var importante = getDynamicPriority(task) === "alta" || getTaskUrgencyBucket(task) <= 3;
+
+    if (isLowPriorityFlexibleTask(task)) {
+      extra.push(task);
+      logDailyPlanDebug(task, "incluso_in_se_avanza_tempo", "task con scadenza vaga o bassa priorita flessibile");
+      continue;
+    }
 
     if (isFutureMonitoringTask(task)) {
       if (canFutureTaskAppearToday(task) && (giorni !== 1 || isAllowedTomorrowExtraTask(task))) {
