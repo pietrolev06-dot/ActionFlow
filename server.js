@@ -95,10 +95,11 @@ const ANALYSIS_SCHEMA = {
             priorita: { type: "string", enum: ["alta", "media", "bassa"], description: "alta = entro 2 giorni, media = 3-7 giorni, bassa = oltre 7 o senza scadenza" },
             scadenzaOriginale: { type: ["string", "null"], description: "Riferimento temporale così come scritto dall'utente, es. 'domani', '30 aprile'. null se assente." },
             dataISO: { type: ["string", "null"], description: "Data in formato ISO yyyy-MM-dd calcolata dal riferimento. null se non determinabile." },
+            time: { type: ["string", "null"], description: "Orario estratto in formato HH:mm (24h), es. '16:00', '09:30'. null se assente." },
             durataStimataMinuti: { type: "integer", description: "Stima pratica e realistica della durata dell'azione in minuti interi." },
             energiaStimata: { type: "string", enum: ["bassa", "media", "alta"], description: "Livello di energia mentale richiesto dall'azione." }
           },
-          required: ["testo", "priorita", "scadenzaOriginale", "dataISO", "durataStimataMinuti", "energiaStimata"],
+          required: ["testo", "priorita", "scadenzaOriginale", "dataISO", "time", "durataStimataMinuti", "energiaStimata"],
           additionalProperties: false
         }
       },
@@ -175,6 +176,14 @@ REGOLE PER LE SCADENZE:
 - Esempi di riferimenti vaghi che non devono produrre una data precisa se il giorno non e determinabile con sicurezza: "questa settimana", "settimana prossima", "piu avanti", "entro il mese", "nei prossimi giorni".
 - Non trasformare riferimenti vaghi in "oggi" per default.
 - Non inventare scadenze: se un'azione non ha una scadenza, scadenzaOriginale e dataISO devono essere null nell'azione e l'azione non deve comparire nell'array scadenze.
+
+REGOLE PER GLI ORARI:
+- Estrai l'orario se presente nella frase e compilalo nel campo time dell'azione.
+- Formato obbligatorio di time: HH:mm (24 ore), con zero-padding.
+- Esempi: "alle 16" -> "16:00", "alle 9" -> "09:00", "alle 16:30" -> "16:30".
+- Frasi come "oggi pomeriggio alle 17" devono mantenere sia il riferimento temporale nella scadenza sia time = "17:00".
+- Se nella frase non è presente un orario esplicito, imposta time = null.
+- Non inventare orari: evita default automatici se non esplicitamente presenti nel testo.
 
 Rispondi SOLO con il JSON richiesto, senza testo aggiuntivo.`;
 }

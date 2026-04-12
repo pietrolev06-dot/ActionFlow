@@ -22,6 +22,11 @@ var scadenzeCorrente = [];
 var voiceRecognition = null;
 var voiceInputAttivo = false;
 var voiceBaseText = "";
+var voiceFinalTranscript = "";
+var voiceInterimTranscript = "";
+var voiceShouldRestart = false;
+var voiceStoppingManually = false;
+var voiceStatus = "idle";
 var DAILY_PLAN_STORAGE_KEY = "actionflow_daily_plan";
 var DAILY_PLAN_DEFAULT_DURATION = 30;
 var DAILY_PLAN_MAX_TASKS = 4;
@@ -29,6 +34,176 @@ var DAILY_PLAN_MAX_SLOT_MINUTES = 180;
 var DAILY_PLAN_DEBUG = true;
 var ANALYSIS_PREVIEW_MAX_ITEMS = 6;
 var pendingAnalysisResult = null;
+
+function normalizeText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getTaskNormalizedDate(task) {
+  return task && task.dataISO ? String(task.dataISO).trim() : "";
+}
+
+function getScadenzaNormalizedDate(scadenza) {
+  if (!scadenza) return "";
+  if (scadenza.dataRisolta) return String(scadenza.dataRisolta).trim();
+  if (scadenza.dataISO) return String(scadenza.dataISO).trim();
+  return normalizeText(scadenza.data || "");
+}
+
+function mergeTaskRecords(existingTask, incomingTask) {
+  var existing = normalizzaAzioneSalvata(existingTask);
+  var incoming = normalizzaAzioneSalvata(incomingTask);
+  var merged = normalizzaAzioneSalvata(existing);
+  var existingPriority = livelloPriorita(existing.priorita || "bassa");
+  var incomingPriority = livelloPriorita(incoming.priorita || "bassa");
+
+  merged.testo = incoming.testo || existing.testo;
+  merged.priorita = incomingPriority > existingPriority ? incoming.priorita : existing.priorita;
+  merged.scadenzaOriginale = incoming.scadenzaOriginale || existing.scadenzaOriginale || null;
+  merged.dataISO = incoming.dataISO || existing.dataISO || null;
+  merged.time = incoming.time || existing.time || null;
+  merged.durataStimataMinuti = normalizzaDurataStimata(incoming.durataStimataMinuti);
+  if (merged.durataStimataMinuti === null) {
+    merged.durataStimataMinuti = normalizzaDurataStimata(existing.durataStimataMinuti);
+  }
+  merged.energiaStimata = normalizzaEnergiaStimata(incoming.energiaStimata) || normalizzaEnergiaStimata(existing.energiaStimata);
+
+  if (existingTask && existingTask.aggiunta) merged.aggiunta = existingTask.aggiunta;
+  if (incomingTask && incomingTask.aggiunta && !merged.aggiunta) merged.aggiunta = incomingTask.aggiunta;
+  if (existingTask && existingTask.id) merged.id = existingTask.id;
+  if (incomingTask && incomingTask.id && !merged.id) merged.id = incomingTask.id;
+  if ((existingTask && existingTask.completato === true) || (incomingTask && incomingTask.completato === true)) {
+    merged.completato = true;
+  }
+  if (existingTask && existingTask.completedAt) merged.completedAt = existingTask.completedAt;
+  if (incomingTask && incomingTask.completedAt) merged.completedAt = incomingTask.completedAt;
+
+  return merged;
+}
+
+function areTasksDuplicate(taskA, taskB) {
+  var textA = normalizeText(taskA && taskA.testo ? taskA.testo : "");
+  var textB = normalizeText(taskB && taskB.testo ? taskB.testo : "");
+  var dateA = getTaskNormalizedDate(taskA);
+  var dateB = getTaskNormalizedDate(taskB);
+
+  if (!textA || !textB || textA !== textB) return false;
+  if (dateA && dateB) return dateA === dateB;
+  return true;
+}
+
+function isDuplicateTask(task, existingTasks) {
+  for (var i = 0; i < existingTasks.length; i++) {
+    if (areTasksDuplicate(task, existingTasks[i])) return true;
+  }
+  return false;
+}
+
+function dedupeTasks(tasks) {
+  var source = Array.isArray(tasks) ? tasks : [];
+  var deduped = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var normalizedTask = normalizzaAzioneSalvata(source[i]);
+    var merged = false;
+
+    if (!normalizedTask.testo) continue;
+
+    for (var j = 0; j < deduped.length; j++) {
+      if (areTasksDuplicate(normalizedTask, deduped[j])) {
+        deduped[j] = mergeTaskRecords(deduped[j], source[i]);
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) {
+      deduped.push(mergeTaskRecords({}, source[i]));
+    }
+  }
+
+  return deduped;
+}
+
+function mergeScadenzaRecords(existingDeadline, incomingDeadline) {
+  var merged = {
+    testo: (incomingDeadline && incomingDeadline.testo) || (existingDeadline && existingDeadline.testo) || "",
+    data: (incomingDeadline && incomingDeadline.data) || (existingDeadline && existingDeadline.data) || "",
+    dataRisolta: (incomingDeadline && incomingDeadline.dataRisolta) || (incomingDeadline && incomingDeadline.dataISO) || (existingDeadline && existingDeadline.dataRisolta) || (existingDeadline && existingDeadline.dataISO) || null
+  };
+
+  if (existingDeadline && existingDeadline.aggiunta) merged.aggiunta = existingDeadline.aggiunta;
+  if (incomingDeadline && incomingDeadline.aggiunta && !merged.aggiunta) merged.aggiunta = incomingDeadline.aggiunta;
+
+  return merged;
+}
+
+function areScadenzeDuplicate(scadenzaA, scadenzaB) {
+  var textA = normalizeText(scadenzaA && scadenzaA.testo ? scadenzaA.testo : "");
+  var textB = normalizeText(scadenzaB && scadenzaB.testo ? scadenzaB.testo : "");
+  var dateA = getScadenzaNormalizedDate(scadenzaA);
+  var dateB = getScadenzaNormalizedDate(scadenzaB);
+
+  if (!textA || !textB || textA !== textB) return false;
+  if (!dateA || !dateB) return dateA === dateB;
+  return dateA === dateB;
+}
+
+function dedupeScadenze(scadenze) {
+  var source = Array.isArray(scadenze) ? scadenze : [];
+  var deduped = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var current = mergeScadenzaRecords({}, source[i]);
+    var merged = false;
+
+    if (!current.testo) continue;
+
+    for (var j = 0; j < deduped.length; j++) {
+      if (areScadenzeDuplicate(current, deduped[j])) {
+        deduped[j] = mergeScadenzaRecords(deduped[j], source[i]);
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) {
+      deduped.push(current);
+    }
+  }
+
+  return deduped;
+}
+
+function cleanupStoredTaskDuplicates() {
+  var changed = false;
+  var storageEntries = [
+    { key: "actionflow_checklist", type: "task" },
+    { key: "actionflow_archivio_azioni", type: "task" },
+    { key: "actionflow_scadenze", type: "deadline" },
+    { key: "actionflow_archivio_scadenze", type: "deadline" }
+  ];
+
+  for (var i = 0; i < storageEntries.length; i++) {
+    try {
+      var raw = localStorage.getItem(storageEntries[i].key);
+      var parsed = raw ? JSON.parse(raw) : [];
+      var cleaned = storageEntries[i].type === "task" ? dedupeTasks(parsed) : dedupeScadenze(parsed);
+
+      if (JSON.stringify(parsed || []) !== JSON.stringify(cleaned)) {
+        localStorage.setItem(storageEntries[i].key, JSON.stringify(cleaned));
+        changed = true;
+      }
+    } catch (e) {}
+  }
+
+  return changed;
+}
+
+cleanupStoredTaskDuplicates();
 
 function clearAllTaskDataStorage() {
   localStorage.removeItem("actionflow_archivio_azioni");
@@ -56,6 +231,7 @@ function countDailyPlanTasks(plan) {
   return {
     mattina: sezioni.mattina.length,
     pomeriggio: sezioni.pomeriggio.length,
+    restaDaFareOggi: sezioni.restaDaFareOggi.length,
     seAvanzaTempo: sezioni.seAvanzaTempo.length
   };
 }
@@ -71,15 +247,17 @@ function normalizeDailyPlan(plan) {
     data: plan.data || formatISO(inizioOggiLocale()),
     mattina: sezioni.mattina,
     pomeriggio: sezioni.pomeriggio,
+    restaDaFareOggi: sezioni.restaDaFareOggi,
     seAvanzaTempo: sezioni.seAvanzaTempo,
-    daFareOggi: sezioni.mattina.concat(sezioni.pomeriggio),
+    daFareOggi: sezioni.mattina.concat(sezioni.pomeriggio).concat(sezioni.restaDaFareOggi),
     totali: {
-      taskConsiderati: plan.totali && typeof plan.totali.taskConsiderati === "number" ? plan.totali.taskConsiderati : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.seAvanzaTempo.length,
+      taskConsiderati: plan.totali && typeof plan.totali.taskConsiderati === "number" ? plan.totali.taskConsiderati : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.restaDaFareOggi.length + sezioni.seAvanzaTempo.length,
       minutiMattina: minutiMattina,
       minutiPomeriggio: minutiPomeriggio,
       minutiDaFareOggi: minutiMattina + minutiPomeriggio,
       taskMattina: sezioni.mattina.length,
       taskPomeriggio: sezioni.pomeriggio.length,
+      taskRestaDaFareOggi: sezioni.restaDaFareOggi.length,
       taskFuturiMonitorati: plan.totali && typeof plan.totali.taskFuturiMonitorati === "number" ? plan.totali.taskFuturiMonitorati : 0
     }
   };
@@ -178,6 +356,13 @@ function renderAnalysisPreview(azioni, scadenze) {
       meta.appendChild(energia);
     }
 
+    if (task.time) {
+      var badgeTime = document.createElement("span");
+      badgeTime.className = "badge-time";
+      badgeTime.textContent = task.time;
+      meta.appendChild(badgeTime);
+    }
+
     var badgePriorita = document.createElement("span");
     badgePriorita.className = "badge-priorita priorita-" + (task.prioritaDinamica || "bassa");
     badgePriorita.textContent = task.prioritaDinamica || "bassa";
@@ -196,9 +381,12 @@ function renderAnalysisPreview(azioni, scadenze) {
 }
 
 function openAnalysisPreview(azioni, scadenze) {
+  var cleanedAzioni = dedupeTasks(azioni);
+  var cleanedScadenze = dedupeScadenze(scadenze);
+
   pendingAnalysisResult = {
-    azioni: Array.isArray(azioni) ? azioni.slice() : [],
-    scadenze: Array.isArray(scadenze) ? scadenze.slice() : []
+    azioni: cleanedAzioni,
+    scadenze: cleanedScadenze
   };
 
   renderAnalysisPreview(pendingAnalysisResult.azioni, pendingAnalysisResult.scadenze);
@@ -304,27 +492,156 @@ function aggiornaStatoVoiceButton(attivo) {
 
   bottone.classList.toggle("is-recording", attivo);
   bottone.setAttribute("aria-pressed", attivo ? "true" : "false");
-  bottone.title = attivo ? "Ferma input vocale" : "Input vocale";
+  if (voiceStatus === "unsupported") {
+    bottone.title = "Input vocale non supportato";
+    return;
+  }
+
+  if (voiceStatus === "error") {
+    bottone.title = "Errore input vocale";
+    return;
+  }
+
+  if (voiceStatus === "paused") {
+    bottone.title = "Pausa rilevata: continuo ad ascoltare";
+    return;
+  }
+
+  if (voiceStatus === "ended") {
+    bottone.title = "Ascolto terminato: clicca per riavviare";
+    return;
+  }
+
+  if (attivo) {
+    bottone.title = "Ferma input vocale";
+    return;
+  }
+
+  bottone.title = "Avvia input vocale";
+}
+
+function setVoiceStatus(nextStatus) {
+  voiceStatus = nextStatus || "idle";
+  aggiornaStatoVoiceButton(voiceInputAttivo);
+}
+
+function getSpeechRecognitionConstructor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function appendSpeechSegment(baseText, segment) {
+  var base = typeof baseText === "string" ? baseText : "";
+  var extra = typeof segment === "string" ? segment.trim() : "";
+
+  if (!extra) return base;
+  if (!base) return extra;
+  if (/\s$/.test(base)) return base + extra;
+  return base + " " + extra;
+}
+
+function updateTextareaWithSpeech(textarea) {
+  if (!textarea) return;
+
+  var stableText = appendSpeechSegment(voiceBaseText, voiceFinalTranscript);
+  var composed = voiceInterimTranscript
+    ? appendSpeechSegment(stableText, voiceInterimTranscript)
+    : stableText;
+
+  textarea.value = composed;
+}
+
+function handleSpeechResult(event, textarea) {
+  var finalChunk = "";
+  var interimChunk = "";
+
+  if (!event || !event.results) return;
+
+  for (var i = event.resultIndex; i < event.results.length; i++) {
+    var transcript = event.results[i][0] ? event.results[i][0].transcript : "";
+    if (!transcript) continue;
+
+    if (event.results[i].isFinal) {
+      finalChunk = appendSpeechSegment(finalChunk, transcript);
+    } else {
+      interimChunk = appendSpeechSegment(interimChunk, transcript);
+    }
+  }
+
+  if (finalChunk) {
+    voiceFinalTranscript = appendSpeechSegment(voiceFinalTranscript, finalChunk);
+  }
+
+  voiceInterimTranscript = interimChunk;
+  updateTextareaWithSpeech(textarea);
+  setVoiceStatus("active");
+}
+
+function handleSpeechError(event) {
+  var errorCode = event && event.error ? event.error : "unknown";
+
+  if (errorCode === "aborted") return;
+
+  if (errorCode === "not-allowed" || errorCode === "service-not-allowed") {
+    voiceShouldRestart = false;
+    setVoiceStatus("error");
+    mostraErroreInput("Microfono non disponibile o permesso negato.");
+    return;
+  }
+
+  if (errorCode === "audio-capture") {
+    voiceShouldRestart = false;
+    setVoiceStatus("error");
+    mostraErroreInput("Microfono non disponibile su questo dispositivo.");
+    return;
+  }
+
+  if (errorCode === "no-speech") {
+    setVoiceStatus("paused");
+    return;
+  }
+
+  setVoiceStatus("error");
+  mostraErroreInput("Errore durante l'input vocale. Riprova.");
+}
+
+function stopVoiceInput() {
+  voiceShouldRestart = false;
+  voiceStoppingManually = true;
+
+  if (voiceRecognition && voiceInputAttivo) {
+    try {
+      voiceRecognition.stop();
+    } catch (e) {}
+  }
+
+  voiceInputAttivo = false;
+  voiceInterimTranscript = "";
+  setVoiceStatus("ended");
 }
 
 function startVoiceInput() {
-  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var SpeechRecognition = getSpeechRecognitionConstructor();
   var textarea = document.getElementById("testo-input");
 
   if (!SpeechRecognition) {
+    setVoiceStatus("unsupported");
     mostraErroreInput("Input vocale non supportato in questo browser.");
     return;
   }
 
   if (!textarea) return;
 
-  if (voiceInputAttivo && voiceRecognition) {
-    voiceRecognition.stop();
+  if (voiceInputAttivo) {
+    stopVoiceInput();
     return;
   }
 
   nascondiErroreInput();
-  voiceBaseText = textarea.value ? textarea.value.trim() : "";
+  voiceBaseText = typeof textarea.value === "string" ? textarea.value : "";
+  voiceFinalTranscript = "";
+  voiceInterimTranscript = "";
+  voiceShouldRestart = true;
+  voiceStoppingManually = false;
   voiceRecognition = new SpeechRecognition();
   voiceRecognition.lang = "it-IT";
   voiceRecognition.continuous = true;
@@ -332,51 +649,47 @@ function startVoiceInput() {
 
   voiceRecognition.onstart = function() {
     voiceInputAttivo = true;
-    aggiornaStatoVoiceButton(true);
+    setVoiceStatus("active");
   };
 
   voiceRecognition.onresult = function(event) {
-    var finalTranscript = "";
-    var interimTranscript = "";
-
-    for (var i = event.resultIndex; i < event.results.length; i++) {
-      var transcript = event.results[i][0] ? event.results[i][0].transcript : "";
-      if (event.results[i].isFinal) {
-        finalTranscript += transcript + " ";
-      } else {
-        interimTranscript += transcript;
-      }
-    }
-
-    var parti = [];
-    if (voiceBaseText) parti.push(voiceBaseText);
-    if (finalTranscript.trim()) parti.push(finalTranscript.trim());
-    var testoFinale = parti.join(" ").trim();
-    textarea.value = interimTranscript.trim() ? (testoFinale ? testoFinale + " " + interimTranscript.trim() : interimTranscript.trim()) : testoFinale;
+    handleSpeechResult(event, textarea);
   };
 
   voiceRecognition.onerror = function(event) {
-    voiceInputAttivo = false;
-    aggiornaStatoVoiceButton(false);
-
-    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-      mostraErroreInput("Microfono non disponibile o permesso negato.");
-    } else if (event.error === "audio-capture") {
-      mostraErroreInput("Microfono non disponibile su questo dispositivo.");
-    } else if (event.error !== "aborted") {
-      mostraErroreInput("Errore durante l'input vocale. Riprova.");
-    }
+    handleSpeechError(event);
   };
 
   voiceRecognition.onend = function() {
     voiceInputAttivo = false;
-    aggiornaStatoVoiceButton(false);
-    voiceBaseText = textarea.value ? textarea.value.trim() : "";
+
+    // Consolida sempre i finali prima di eventuale riavvio, senza perdere testo.
+    voiceBaseText = appendSpeechSegment(voiceBaseText, voiceFinalTranscript);
+    voiceFinalTranscript = "";
+    voiceInterimTranscript = "";
+    updateTextareaWithSpeech(textarea);
+
+    if (voiceShouldRestart && !voiceStoppingManually) {
+      setVoiceStatus("paused");
+      setTimeout(function() {
+        if (!voiceShouldRestart) return;
+        try {
+          voiceRecognition.start();
+        } catch (e) {
+          setVoiceStatus("ended");
+        }
+      }, 220);
+      return;
+    }
+
+    setVoiceStatus("ended");
+    voiceStoppingManually = false;
   };
 
   try {
     voiceRecognition.start();
   } catch (err) {
+    setVoiceStatus("error");
     mostraErroreInput("Impossibile avviare l'input vocale ora.");
   }
 }
@@ -452,7 +765,7 @@ function buildScadenzaMap(scadenze) {
 
   for (var i = 0; i < lista.length; i++) {
     if (lista[i] && lista[i].testo) {
-      mappa[lista[i].testo] = lista[i];
+      mappa[normalizeText(lista[i].testo)] = lista[i];
     }
   }
 
@@ -460,15 +773,17 @@ function buildScadenzaMap(scadenze) {
 }
 
 function resolveTaskForDisplay(task, scadenzeMap) {
-  var fallback = scadenzeMap && task && task.testo ? scadenzeMap[task.testo] : null;
+  var fallback = scadenzeMap && task && task.testo ? scadenzeMap[normalizeText(task.testo)] : null;
   var dataISO = task && task.dataISO ? task.dataISO : (fallback ? fallback.dataRisolta || fallback.dataISO || null : null);
   var scadenzaOriginale = task && task.scadenzaOriginale ? task.scadenzaOriginale : (fallback ? fallback.data || fallback.scadenzaOriginale || null : null);
+  var orario = normalizzaOrario(task && task.time ? task.time : null);
   var resolved = {
     id: task && task.id ? task.id : null,
     testo: task && task.testo ? task.testo : "",
     priorita: task && task.priorita ? task.priorita : "bassa",
     dataISO: dataISO,
     scadenzaOriginale: scadenzaOriginale,
+    time: orario,
     durataStimataMinuti: task ? task.durataStimataMinuti : null,
     energiaStimata: task ? task.energiaStimata : null,
     completato: task ? task.completato : false
@@ -569,17 +884,17 @@ function getStoredScadenzaMap() {
 
   for (var i = 0; i < scadenze.length; i++) {
     if (scadenze[i] && scadenze[i].testo) {
-      mappa[scadenze[i].testo] = scadenze[i];
+      mappa[normalizeText(scadenze[i].testo)] = scadenze[i];
     }
   }
 
   try {
     var raw = localStorage.getItem("actionflow_scadenze");
-    var correnti = raw ? JSON.parse(raw) : [];
+    var correnti = dedupeScadenze(raw ? JSON.parse(raw) : []);
     if (Array.isArray(correnti)) {
       for (var j = 0; j < correnti.length; j++) {
         if (correnti[j] && correnti[j].testo) {
-          mappa[correnti[j].testo] = correnti[j];
+          mappa[normalizeText(correnti[j].testo)] = correnti[j];
         }
       }
     }
@@ -590,9 +905,10 @@ function getStoredScadenzaMap() {
 
 function normalizzaTaskPerPiano(task, completate, scadenzeMap) {
   var azione = normalizzaAzioneSalvata(task);
-  var fallbackScadenza = scadenzeMap[azione.testo] || null;
+  var fallbackScadenza = scadenzeMap[normalizeText(azione.testo)] || null;
   var durata = normalizzaDurataStimata(azione.durataStimataMinuti);
   var energia = normalizzaEnergiaStimata(azione.energiaStimata);
+  var orario = normalizzaOrario(azione.time);
 
   return {
     id: task && task.id ? task.id : generaIdAzione(azione.testo || ""),
@@ -600,6 +916,7 @@ function normalizzaTaskPerPiano(task, completate, scadenzeMap) {
     priorita: azione.priorita || "media",
     dataISO: azione.dataISO || (fallbackScadenza ? fallbackScadenza.dataRisolta || null : null),
     scadenzaOriginale: azione.scadenzaOriginale || (fallbackScadenza ? fallbackScadenza.data || null : null),
+    time: orario,
     durataStimataMinuti: durata !== null ? durata : DAILY_PLAN_DEFAULT_DURATION,
     energiaStimata: energia || "media",
     completato: isTaskCompletedForPlanner(task || azione, completate),
@@ -616,12 +933,12 @@ function getSavedTasksForPlanning() {
 
   try {
     var raw = localStorage.getItem("actionflow_archivio_azioni");
-    var archivio = raw ? JSON.parse(raw) : [];
+    var archivio = raw ? dedupeTasks(JSON.parse(raw)) : [];
     var sorgente = Array.isArray(archivio) && archivio.length > 0 ? archivio : [];
 
     if (sorgente.length === 0) {
       var rawChecklist = localStorage.getItem("actionflow_checklist");
-      var checklist = rawChecklist ? JSON.parse(rawChecklist) : [];
+      var checklist = rawChecklist ? dedupeTasks(JSON.parse(rawChecklist)) : [];
       if (Array.isArray(checklist)) {
         sorgente = checklist;
       }
@@ -645,7 +962,7 @@ function getDynamicPriority(task) {
 function logDailyPlanDebug(task, reason, details) {
   if (!DAILY_PLAN_DEBUG) return;
 
-  var preferredSlot = task ? getExplicitSlotHint(task) : null;
+  var preferredSlot = task ? getTaskForcedSlot(task) : null;
   var slotFinale = details && typeof details === "object" && details.slotFinale ? details.slotFinale : null;
   var dettagli = details && typeof details === "object"
     ? (details.motivo || details.info || details)
@@ -654,6 +971,7 @@ function logDailyPlanDebug(task, reason, details) {
   console.log("[ActionFlow][OrganizzaGiornata]", {
     testo: task && task.testo ? task.testo : "",
     dataISO: task && task.dataISO ? task.dataISO : null,
+    time: task && task.time ? task.time : null,
     preferredSlot: preferredSlot,
     slotFinale: slotFinale,
     priorita: task && task.priorita ? task.priorita : "bassa",
@@ -781,17 +1099,9 @@ function getSlotConstraintReason(task, slotName, planSections) {
   var durataTask = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
   var highEnergyCount = getHighEnergyCountForSlot(slotTasks);
 
-  if (getPrimaryTaskCount(planSections) >= DAILY_PLAN_MAX_TASKS) return "limite_task_principali_raggiunto";
   if (giorni === 1) return "task_di_domani_riservato_a_extra";
   if (slotMinutes + durataTask > DAILY_PLAN_MAX_SLOT_MINUTES) return "slot_oltre_180_minuti";
   if (task.energiaStimata === "alta" && highEnergyCount >= 1) return "slot_ha_gia_un_task_alta_energia";
-
-  if (slotTasks.length > 0) {
-    var previousTask = slotTasks[slotTasks.length - 1];
-    if (isLongTask(previousTask) && isLongTask(task)) {
-      return "due_task_lunghi_consecutivi";
-    }
-  }
 
   return null;
 }
@@ -836,6 +1146,49 @@ function isExplicitTodaySlotTask(task) {
   var preferredSlot = getExplicitSlotHint(task);
 
   if (!preferredSlot || hasVagueDeadline(task)) return false;
+  if (giorni !== null && giorni > 0) return false;
+  return true;
+}
+
+function getTaskTimeMinutes(task) {
+  var normalized = normalizzaOrario(task && task.time ? task.time : null);
+  var parts;
+  var hours;
+  var minutes;
+
+  if (!normalized) return null;
+
+  parts = normalized.split(":");
+  if (parts.length !== 2) return null;
+
+  hours = parseInt(parts[0], 10);
+  minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes)) return null;
+
+  return (hours * 60) + minutes;
+}
+
+function getTimeBasedSlotHint(task) {
+  var totalMinutes = getTaskTimeMinutes(task);
+
+  if (totalMinutes === null) return null;
+  if (totalMinutes >= 360 && totalMinutes < 720) return "mattina";
+  if (totalMinutes >= 720 && totalMinutes < 1140) return "pomeriggio";
+  return null;
+}
+
+function getTaskForcedSlot(task) {
+  var explicitHint = getExplicitSlotHint(task);
+  var timeHint = getTimeBasedSlotHint(task);
+
+  if (timeHint) return timeHint;
+  return explicitHint;
+}
+
+function isTimeConstrainedTodayTask(task) {
+  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+
+  if (!getTimeBasedSlotHint(task) || hasVagueDeadline(task)) return false;
   if (giorni !== null && giorni > 0) return false;
   return true;
 }
@@ -934,10 +1287,21 @@ function getExplicitSlotHint(task) {
 
 function sortTasksWithinSlot(tasks, slotName) {
   return tasks.slice().sort(function(a, b) {
+    var timeSlotA = getTimeBasedSlotHint(a);
+    var timeSlotB = getTimeBasedSlotHint(b);
+    var timeMinutesA = getTaskTimeMinutes(a);
+    var timeMinutesB = getTaskTimeMinutes(b);
+    var timedScoreA = timeSlotA === slotName && timeMinutesA !== null ? 1 : 0;
+    var timedScoreB = timeSlotB === slotName && timeMinutesB !== null ? 1 : 0;
     var hintA = getExplicitSlotHint(a);
     var hintB = getExplicitSlotHint(b);
     var hintScoreA = hintA === slotName ? 1 : 0;
     var hintScoreB = hintB === slotName ? 1 : 0;
+
+    if (timedScoreA !== timedScoreB) return timedScoreB - timedScoreA;
+    if (timedScoreA === 1 && timedScoreB === 1 && timeMinutesA !== timeMinutesB) {
+      return timeMinutesA - timeMinutesB;
+    }
 
     if (hintScoreA !== hintScoreB) return hintScoreB - hintScoreA;
 
@@ -952,6 +1316,60 @@ function sortTasksWithinSlot(tasks, slotName) {
     var urgencyA = getTaskUrgencyScore(a);
     var urgencyB = getTaskUrgencyScore(b);
     if (urgencyA !== urgencyB) return urgencyA - urgencyB;
+
+    return (a && a.testo ? a.testo : "").localeCompare(b && b.testo ? b.testo : "", "it");
+  });
+}
+
+function sortTodayTasksForPlan(tasks) {
+  return tasks.slice().sort(function(a, b) {
+    var timeA = getTaskTimeMinutes(a);
+    var timeB = getTaskTimeMinutes(b);
+    var timedA = timeA !== null ? 1 : 0;
+    var timedB = timeB !== null ? 1 : 0;
+    var forcedA = getTaskForcedSlot(a) ? 1 : 0;
+    var forcedB = getTaskForcedSlot(b) ? 1 : 0;
+    var urgencyA;
+    var urgencyB;
+
+    if (timedA !== timedB) return timedB - timedA;
+    if (timedA === 1 && timedB === 1 && timeA !== timeB) return timeA - timeB;
+
+    if (forcedA !== forcedB) return forcedB - forcedA;
+
+    urgencyA = getTaskUrgencyScore(a);
+    urgencyB = getTaskUrgencyScore(b);
+    if (urgencyA !== urgencyB) return urgencyA - urgencyB;
+
+    if (livelloPriorita(getDynamicPriority(a)) !== livelloPriorita(getDynamicPriority(b))) {
+      return livelloPriorita(getDynamicPriority(b)) - livelloPriorita(getDynamicPriority(a));
+    }
+
+    return (a && a.testo ? a.testo : "").localeCompare(b && b.testo ? b.testo : "", "it");
+  });
+}
+
+function sortUntimedTodayTasksForPlan(tasks) {
+  return tasks.slice().sort(function(a, b) {
+    var urgencyA = getTaskUrgencyScore(a);
+    var urgencyB = getTaskUrgencyScore(b);
+    var priorityA = livelloPriorita(getDynamicPriority(a));
+    var priorityB = livelloPriorita(getDynamicPriority(b));
+    var shortA = isVeryShortTask(a) ? 1 : 0;
+    var shortB = isVeryShortTask(b) ? 1 : 0;
+    var energyA = getTaskEnergyValue(a && a.energiaStimata ? a.energiaStimata : "media");
+    var energyB = getTaskEnergyValue(b && b.energiaStimata ? b.energiaStimata : "media");
+
+    if (urgencyA !== urgencyB) return urgencyA - urgencyB;
+    if (priorityA !== priorityB) return priorityB - priorityA;
+    if (shortA !== shortB) return shortB - shortA;
+
+    // Favor medium/low energy for filler tasks before high-energy ones.
+    if (energyA !== energyB) {
+      if (energyA === 3) return 1;
+      if (energyB === 3) return -1;
+      return energyA - energyB;
+    }
 
     return (a && a.testo ? a.testo : "").localeCompare(b && b.testo ? b.testo : "", "it");
   });
@@ -973,9 +1391,9 @@ function getPreferredSlot(task, currentPlan) {
   var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
   var morningCount = currentPlan.mattina.length;
   var afternoonCount = currentPlan.pomeriggio.length;
-  var explicitHint = getExplicitSlotHint(task);
+  var forcedSlot = getTaskForcedSlot(task);
 
-  if (explicitHint) return explicitHint;
+  if (forcedSlot) return forcedSlot;
 
   if (task.energiaStimata === "alta") return "mattina";
   if (task.energiaStimata === "media") return "pomeriggio";
@@ -985,10 +1403,22 @@ function getPreferredSlot(task, currentPlan) {
 
 function chooseSlotForTask(task, planSections) {
   var explicitHint = getExplicitSlotHint(task);
+  var timeHint = getTimeBasedSlotHint(task);
   var preferred = getPreferredSlot(task, planSections);
   var secondary = preferred === "mattina" ? "pomeriggio" : "mattina";
   var preferredReason = getSlotConstraintReason(task, preferred, planSections);
   var secondaryReason;
+
+  if (timeHint) {
+    if (!preferredReason) {
+      return { slot: timeHint, reason: "assegnato_slot_orario" };
+    }
+
+    return {
+      slot: null,
+      reason: timeHint + ": " + preferredReason + " (vincolo orario)"
+    };
+  }
 
   if (explicitHint) {
     if (!preferredReason) {
@@ -1023,6 +1453,68 @@ function assignPrimaryTasks(tasks) {
   };
   var selectedTasks = [];
   var blockedUrgentTasks = 0;
+  var deferredTodayTasks = [];
+
+  function pushDeferredToday(task, reason) {
+    if (!task) return;
+    if (deferredTodayTasks.indexOf(task) === -1) {
+      deferredTodayTasks.push(task);
+      logDailyPlanDebug(task, "rinviato_a_resta_da_fare_oggi", { slotFinale: "restaDaFareOggi", motivo: reason || "task di oggi non entrato nei limiti degli slot" });
+    }
+  }
+
+  function tryReplaceLessImportantTaskForTimed(task, targetSlot) {
+    var slotTasks;
+    var slotMinutes;
+    var durationTask;
+    var taskUrgency;
+    var candidateIndex = -1;
+    var candidateUrgency = -Infinity;
+    var candidate;
+    var tempSections;
+
+    if (!targetSlot) return null;
+
+    slotTasks = planSections[targetSlot] || [];
+    if (slotTasks.length === 0) return null;
+
+    slotMinutes = getPlanSlotMinutes(slotTasks);
+    durationTask = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
+    taskUrgency = getTaskUrgencyScore(task);
+
+    for (var i = 0; i < slotTasks.length; i++) {
+      var current = slotTasks[i];
+      var currentUrgency = getTaskUrgencyScore(current);
+      var currentDuration = normalizzaDurataStimata(current && current.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
+
+      if (getTaskTimeMinutes(current) !== null) continue;
+      if (getTaskForcedSlot(current)) continue;
+      if (currentUrgency < taskUrgency) continue;
+      if (slotMinutes - currentDuration + durationTask > DAILY_PLAN_MAX_SLOT_MINUTES) continue;
+
+      if (currentUrgency > candidateUrgency) {
+        candidateUrgency = currentUrgency;
+        candidateIndex = i;
+      }
+    }
+
+    if (candidateIndex < 0) return null;
+
+    candidate = slotTasks[candidateIndex];
+    tempSections = {
+      mattina: planSections.mattina.slice(),
+      pomeriggio: planSections.pomeriggio.slice()
+    };
+
+    tempSections[targetSlot].splice(candidateIndex, 1);
+    if (getSlotConstraintReason(task, targetSlot, tempSections)) return null;
+
+    planSections[targetSlot].splice(candidateIndex, 1, task);
+    var selectedCandidateIndex = selectedTasks.indexOf(candidate);
+    if (selectedCandidateIndex !== -1) selectedTasks.splice(selectedCandidateIndex, 1);
+    selectedTasks.push(task);
+    return candidate;
+  }
 
   function tryAssignFromList(taskList, listName, maxToAssign) {
     var assignedCount = 0;
@@ -1041,8 +1533,25 @@ function assignPrimaryTasks(tasks) {
 
       slotChoice = chooseSlotForTask(task, planSections);
       if (!slotChoice.slot) {
+        var replacedTask = null;
+
+        if (getTaskTimeMinutes(task) !== null) {
+          replacedTask = tryReplaceLessImportantTaskForTimed(task, getTaskForcedSlot(task));
+        }
+
+        if (replacedTask) {
+          assignedCount++;
+          pushDeferredToday(replacedTask, "sostituito da task di oggi con orario vincolato");
+          logDailyPlanDebug(task, "incluso_nel_piano_principale", { slotFinale: getTaskForcedSlot(task), motivo: listName + ": inserito con priorita oraria, sostituito task meno urgente" });
+          continue;
+        }
+
         if (isUrgentPrimaryTask(task) || isConcreteShortDeadlineTask(task)) {
           blockedUrgentTasks++;
+        }
+        if (isExactTodayTask(task) || isTimeConstrainedTodayTask(task) || isExplicitTodaySlotTask(task)) {
+          pushDeferredToday(task, listName + ": " + slotChoice.reason);
+          continue;
         }
         logDailyPlanDebug(task, "escluso_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: listName + ": " + slotChoice.reason });
         continue;
@@ -1067,7 +1576,7 @@ function assignPrimaryTasks(tasks) {
       continue;
     }
 
-    if (isExplicitTodaySlotTask(tasks[i]) || isExactTodayTask(tasks[i])) {
+    if (isTimeConstrainedTodayTask(tasks[i]) || isExplicitTodaySlotTask(tasks[i]) || isExactTodayTask(tasks[i])) {
       todayTasks.push(tasks[i]);
       todayTaskCount++;
       continue;
@@ -1093,7 +1602,22 @@ function assignPrimaryTasks(tasks) {
   }
 
   if (todayTasks.length > 0) {
-    tryAssignFromList(todayTasks, "task_di_oggi");
+    var timedTodayTasks = [];
+    var untimedTodayTasks = [];
+
+    for (var t = 0; t < todayTasks.length; t++) {
+      if (getTaskTimeMinutes(todayTasks[t]) !== null) {
+        timedTodayTasks.push(todayTasks[t]);
+      } else {
+        untimedTodayTasks.push(todayTasks[t]);
+      }
+    }
+
+    timedTodayTasks = sortTodayTasksForPlan(timedTodayTasks);
+    untimedTodayTasks = sortUntimedTodayTasksForPlan(untimedTodayTasks);
+
+    tryAssignFromList(timedTodayTasks, "task_di_oggi_con_orario");
+    tryAssignFromList(untimedTodayTasks, "task_di_oggi_senza_orario");
 
     if (todayTaskCount < 2 && selectedTasks.length < DAILY_PLAN_MAX_TASKS) {
       tryAssignFromList(supplementalFutureTasks, "eccezione_task_futuri_importanti", 2 - todayTaskCount);
@@ -1104,6 +1628,7 @@ function assignPrimaryTasks(tasks) {
     return {
       mattina: planSections.mattina,
       pomeriggio: planSections.pomeriggio,
+      restaDaFareOggi: sortTodayTasksForPlan(deferredTodayTasks),
       tasks: selectedTasks,
       futureMonitoringTasks: futureMonitoringTasks,
       blockedUrgentTasks: blockedUrgentTasks,
@@ -1123,6 +1648,7 @@ function assignPrimaryTasks(tasks) {
   return {
     mattina: planSections.mattina,
     pomeriggio: planSections.pomeriggio,
+    restaDaFareOggi: sortTodayTasksForPlan(deferredTodayTasks),
     tasks: selectedTasks,
     futureMonitoringTasks: futureMonitoringTasks,
     blockedUrgentTasks: blockedUrgentTasks,
@@ -1131,12 +1657,22 @@ function assignPrimaryTasks(tasks) {
   };
 }
 
-function buildExtraTimeTasks(sortedTasks, selectedTasks) {
+function buildExtraTimeTasks(sortedTasks, selectedTasks, deferredTodayTasks) {
   var extra = [];
+  var deferredToday = Array.isArray(deferredTodayTasks) ? deferredTodayTasks : [];
 
   for (var i = 0; i < sortedTasks.length; i++) {
     var task = sortedTasks[i];
     if (selectedTasks.indexOf(task) !== -1) continue;
+
+    if (isExactTodayTask(task) || isTimeConstrainedTodayTask(task) || isExplicitTodaySlotTask(task)) {
+      if (deferredToday.indexOf(task) !== -1) {
+        logDailyPlanDebug(task, "escluso_da_se_avanza_tempo", { slotFinale: "restaDaFareOggi", motivo: "task di oggi mantenuto in resta da fare oggi" });
+      } else {
+        logDailyPlanDebug(task, "escluso_da_se_avanza_tempo", { slotFinale: "restaDaFareOggi", motivo: "task di oggi non puo essere trattato come opzionale" });
+      }
+      continue;
+    }
 
     var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
     var urgente = giorni !== null && giorni <= 3;
@@ -1198,12 +1734,13 @@ function buildSmartDailyPlan(tasks) {
   var planSections = {
     mattina: scelta.mattina.slice(),
     pomeriggio: scelta.pomeriggio.slice(),
+    restaDaFareOggi: Array.isArray(scelta.restaDaFareOggi) ? scelta.restaDaFareOggi.slice() : [],
     seAvanzaTempo: []
   };
 
-  planSections.seAvanzaTempo = buildExtraTimeTasks(ordinati, scelta.tasks);
+  planSections.seAvanzaTempo = buildExtraTimeTasks(ordinati, scelta.tasks, planSections.restaDaFareOggi);
 
-  if (scelta.tasks.length === 0 && planSections.seAvanzaTempo.length === 0 && ordinati.length > 0) {
+  if (scelta.tasks.length === 0 && planSections.seAvanzaTempo.length === 0 && planSections.restaDaFareOggi.length === 0 && ordinati.length > 0) {
     var rescueTask = ordinati[0];
     var rescueSlot = chooseSlotForTask(rescueTask, { mattina: [], pomeriggio: [] });
 
@@ -1221,6 +1758,7 @@ function buildSmartDailyPlan(tasks) {
       taskPrincipali: scelta.tasks.length,
       taskMattina: planSections.mattina.length,
       taskPomeriggio: planSections.pomeriggio.length,
+      taskRestaDaFareOggi: planSections.restaDaFareOggi.length,
       taskExtra: planSections.seAvanzaTempo.length,
       taskFuturiMonitorati: scelta.futureMonitoringTasks.length,
       blockedUrgentTasks: scelta.blockedUrgentTasks
@@ -1231,8 +1769,9 @@ function buildSmartDailyPlan(tasks) {
     data: formatISO(inizioOggiLocale()),
     mattina: planSections.mattina,
     pomeriggio: planSections.pomeriggio,
+    restaDaFareOggi: planSections.restaDaFareOggi,
     seAvanzaTempo: planSections.seAvanzaTempo,
-    daFareOggi: planSections.mattina.concat(planSections.pomeriggio),
+    daFareOggi: planSections.mattina.concat(planSections.pomeriggio).concat(planSections.restaDaFareOggi),
     totali: {
       taskConsiderati: ordinati.length,
       minutiMattina: scelta.minutiMattina,
@@ -1240,6 +1779,7 @@ function buildSmartDailyPlan(tasks) {
       minutiDaFareOggi: scelta.minutiMattina + scelta.minutiPomeriggio,
       taskMattina: planSections.mattina.length,
       taskPomeriggio: planSections.pomeriggio.length,
+      taskRestaDaFareOggi: planSections.restaDaFareOggi.length,
       taskFuturiMonitorati: scelta.futureMonitoringTasks.length
     }
   };
@@ -1304,6 +1844,13 @@ function appendTaskMeta(meta, task) {
     meta.appendChild(energia);
   }
 
+  if (displayTask.time) {
+    var badgeTime = document.createElement("span");
+    badgeTime.className = "badge-time";
+    badgeTime.textContent = displayTask.time;
+    meta.appendChild(badgeTime);
+  }
+
   var scadenza = displayTask.labelScadenzaDinamica || formatDailyPlanDue(displayTask);
   if (scadenza) {
     var badgeData = document.createElement("span");
@@ -1342,9 +1889,10 @@ function getDailyPlanSections(plan) {
   var piano = plan || {};
   var mattina = Array.isArray(piano.mattina) ? piano.mattina.slice() : [];
   var pomeriggio = Array.isArray(piano.pomeriggio) ? piano.pomeriggio.slice() : [];
+  var restaDaFareOggi = Array.isArray(piano.restaDaFareOggi) ? piano.restaDaFareOggi.slice() : [];
   var seAvanzaTempo = Array.isArray(piano.seAvanzaTempo) ? piano.seAvanzaTempo.slice() : [];
 
-  if (mattina.length === 0 && pomeriggio.length === 0 && Array.isArray(piano.daFareOggi)) {
+  if (mattina.length === 0 && pomeriggio.length === 0 && restaDaFareOggi.length === 0 && Array.isArray(piano.daFareOggi)) {
     var taskOggi = piano.daFareOggi.slice();
     var splitIndex = Math.ceil(taskOggi.length / 2);
     mattina = taskOggi.slice(0, splitIndex);
@@ -1354,6 +1902,7 @@ function getDailyPlanSections(plan) {
   return {
     mattina: mattina,
     pomeriggio: pomeriggio,
+    restaDaFareOggi: restaDaFareOggi,
     seAvanzaTempo: seAvanzaTempo
   };
 }
@@ -1426,53 +1975,45 @@ function decorateFocusTask(task, focusBucket, sourceSlot) {
 }
 
 function getFocusTasks(plan) {
-  var piano = plan || loadDailyPlan() || { mattina: [], pomeriggio: [], seAvanzaTempo: [] };
+  var piano = plan || loadDailyPlan() || { mattina: [], pomeriggio: [], restaDaFareOggi: [], seAvanzaTempo: [] };
   var sezioniPiano = getDailyPlanSections(piano);
-  var primaryEntries = [];
-  var i;
-  var usaExtraComeFallback;
-  var oraEntry;
-  var remainingEntries;
-  var orderedEntries;
-  var primaryOverflow;
-  var extraBase;
+  var mattina = (sezioniPiano.mattina || []).slice();
+  var pomeriggio = (sezioniPiano.pomeriggio || []).slice();
+  var restaDaFareOggi = (sezioniPiano.restaDaFareOggi || []).slice();
+  var extra = (sezioniPiano.seAvanzaTempo || []).slice();
+  var ora = null;
+  var dopo = [];
+  var piuTardiOggi = [];
+  var seAvanzaTempo = extra.slice();
 
-  for (i = 0; i < sezioniPiano.mattina.length; i++) {
-    primaryEntries.push({ task: sezioniPiano.mattina[i], sourceSlot: "mattina" });
+  if (mattina.length > 0) {
+    ora = decorateFocusTask(mattina[0], "now", "mattina");
+    dopo = mattina.slice(1).map(function(task) {
+      return decorateFocusTask(task, "after_now", "mattina");
+    });
+    piuTardiOggi = sortTodayTasksForPlan(pomeriggio.concat(restaDaFareOggi)).map(function(task) {
+      return decorateFocusTask(task, "later_today", "pomeriggio");
+    });
+  } else if (pomeriggio.length > 0) {
+    ora = decorateFocusTask(pomeriggio[0], "now", "pomeriggio");
+    piuTardiOggi = sortTodayTasksForPlan(pomeriggio.slice(1).concat(restaDaFareOggi)).map(function(task) {
+      return decorateFocusTask(task, "later_today", "pomeriggio");
+    });
+  } else if (restaDaFareOggi.length > 0) {
+    ora = decorateFocusTask(restaDaFareOggi[0], "now", "resta");
+    piuTardiOggi = sortTodayTasksForPlan(restaDaFareOggi.slice(1)).map(function(task) {
+      return decorateFocusTask(task, "later_today", "resta");
+    });
+  } else if (extra.length > 0) {
+    ora = decorateFocusTask(extra[0], "now", "extra");
+    seAvanzaTempo = extra.slice(1);
   }
-
-  for (i = 0; i < sezioniPiano.pomeriggio.length; i++) {
-    primaryEntries.push({ task: sezioniPiano.pomeriggio[i], sourceSlot: "pomeriggio" });
-  }
-
-  usaExtraComeFallback = primaryEntries.length === 0;
-
-  if (primaryEntries.length === 0) {
-    for (i = 0; i < (sezioniPiano.seAvanzaTempo || []).length; i++) {
-      primaryEntries.push({ task: sezioniPiano.seAvanzaTempo[i], sourceSlot: "extra" });
-    }
-  }
-
-  oraEntry = primaryEntries.length > 0 ? primaryEntries[0] : null;
-  remainingEntries = primaryEntries.slice(1).map(function(entry) {
-    return {
-      task: entry.task,
-      sourceSlot: entry.sourceSlot,
-      focusBucket: getFocusTaskBucket(entry.task, entry.sourceSlot)
-    };
-  });
-  orderedEntries = sortFocusEntries(remainingEntries);
-  primaryOverflow = orderedEntries.slice(3).map(function(entry) {
-    return decorateFocusTask(entry.task, entry.focusBucket, entry.sourceSlot);
-  });
-  extraBase = usaExtraComeFallback ? [] : (sezioniPiano.seAvanzaTempo || []).slice();
 
   return {
-    ora: oraEntry ? decorateFocusTask(oraEntry.task, "now", oraEntry.sourceSlot) : null,
-    dopo: orderedEntries.slice(0, 3).map(function(entry) {
-      return decorateFocusTask(entry.task, entry.focusBucket, entry.sourceSlot);
-    }),
-    seAvanzaTempo: primaryOverflow.concat(extraBase)
+    ora: ora,
+    dopo: dopo,
+    piuTardiOggi: piuTardiOggi,
+    seAvanzaTempo: seAvanzaTempo
   };
 }
 
@@ -1520,6 +2061,7 @@ function renderFocus(plan) {
   var groups = [
     { id: "focus-blocco-ora", listId: "focus-lista-ora", items: focus.ora ? [focus.ora] : [], variant: "ora" },
     { id: "focus-blocco-dopo", listId: "focus-lista-dopo", items: focus.dopo, variant: "dopo" },
+    { id: "focus-blocco-piu-tardi", listId: "focus-lista-piu-tardi", items: focus.piuTardiOggi, variant: "piu-tardi" },
     { id: "focus-blocco-extra", listId: "focus-lista-extra", items: focus.seAvanzaTempo, variant: "extra" }
   ];
   var visibleCount = 0;
@@ -1536,18 +2078,7 @@ function renderFocus(plan) {
 
   if (summary) {
     if (focus.ora) {
-      var hasLaterToday = false;
-
-      for (var j = 0; j < focus.dopo.length; j++) {
-        if (focus.dopo[j] && focus.dopo[j].focusBucket === "later_today") {
-          hasLaterToday = true;
-          break;
-        }
-      }
-
-      summary.textContent = hasLaterToday
-        ? "Prima i task da fare subito dopo, poi quelli vincolati a più tardi nella giornata."
-        : "Una vista essenziale del prossimo passo, seguita dai task immediatamente successivi.";
+      summary.textContent = "ORA mostra il prossimo passo immediato, seguito da DOPO e PIÙ TARDI OGGI secondo il piano della giornata.";
     } else {
       summary.textContent = "";
     }
@@ -1565,10 +2096,11 @@ function renderDailyPlan(plan, showEmptyState) {
   var blocchi = [
     { id: "blocco-mattina", listId: "lista-mattina", items: sezioniPiano.mattina },
     { id: "blocco-pomeriggio", listId: "lista-pomeriggio", items: sezioniPiano.pomeriggio },
+    { id: "blocco-resta-da-fare-oggi", listId: "lista-resta-da-fare-oggi", items: sezioniPiano.restaDaFareOggi },
     { id: "blocco-se-avanza-tempo", listId: "lista-se-avanza-tempo", items: sezioniPiano.seAvanzaTempo }
   ];
   var haContenuto = false;
-  var taskPianificati = sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length;
+  var taskPianificati = sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length + sezioniPiano.restaDaFareOggi.length;
 
   if (!sezione) {
     renderFocus(normalizedPlan);
@@ -1607,7 +2139,7 @@ function refreshDailyPlanIfPresent() {
   var plan = buildDailyPlan(getSavedTasksForPlanning());
   var sezioniPiano = getDailyPlanSections(plan);
   var savedPlan = saveDailyPlan(plan);
-  renderDailyPlan(savedPlan, sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length + sezioniPiano.seAvanzaTempo.length === 0);
+  renderDailyPlan(savedPlan, sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length + sezioniPiano.restaDaFareOggi.length + sezioniPiano.seAvanzaTempo.length === 0);
   return savedPlan;
 }
 
@@ -1635,6 +2167,8 @@ function pulisciAzione(frase) {
   // Rimuove la parte finale con la scadenza (se presente in coda)
   azione = azione.replace(/\s*(,|-)?\s*entro\b.*$/i, "");
   azione = azione.replace(/\s*(,|-)?\s*(questo weekend|fine settimana|settimana prossima|fine mese|oggi|domani|dopodomani|lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica|lunedi|martedi|mercoledi|giovedi|venerdi)\s*$/i, "");
+  azione = azione.replace(/\s*(,|-)?\s*alle\s+([01]?\d|2[0-3])(?::([0-5]\d))?\s*$/i, "");
+  azione = azione.replace(/\s*(,|-)?\s*(oggi\s+pomeriggio|questo\s+pomeriggio|nel\s+pomeriggio|stamattina|questa\s+mattina|oggi\s+mattina|piu\s+tardi|più\s+tardi|dopo)\s*$/i, "");
   azione = azione.replace(/\s*(,|-)?\s*\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\s*$/i, "");
   azione = azione.replace(/\s*(,|-)?\s*\d{1,2}\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(\s+\d{4})?\s*$/i, "");
 
@@ -2136,20 +2670,35 @@ function aggiungiAzioneUnica(azioni, azione) {
   if (!azione || !azione.testo) return;
 
   for (var i = 0; i < azioni.length; i++) {
-    if (azioni[i].testo === azione.testo) {
+    if (areTasksDuplicate(azioni[i], azione)) {
       if (livelloPriorita(azione.priorita) > livelloPriorita(azioni[i].priorita)) {
         azioni[i].priorita = azione.priorita;
+      }
+      if (azione.dataISO) azioni[i].dataISO = azione.dataISO;
+      if (azione.scadenzaOriginale) azioni[i].scadenzaOriginale = azione.scadenzaOriginale;
+      if (normalizzaDurataStimata(azione.durataStimataMinuti) !== null) {
+        azioni[i].durataStimataMinuti = normalizzaDurataStimata(azione.durataStimataMinuti);
+      }
+      if (normalizzaEnergiaStimata(azione.energiaStimata)) {
+        azioni[i].energiaStimata = normalizzaEnergiaStimata(azione.energiaStimata);
+      }
+      if (normalizzaOrario(azione.time)) {
+        azioni[i].time = normalizzaOrario(azione.time);
       }
       return;
     }
   }
 
-  azioni.push({ testo: azione.testo, priorita: azione.priorita || "media" });
+  azioni.push(normalizzaAzioneSalvata(azione));
 }
 
 function aggiungiScadenzaUnica(scadenze, testoAzione, scadenzaObj) {
   for (var i = 0; i < scadenze.length; i++) {
-    if (scadenze[i].testo === testoAzione && scadenze[i].data === scadenzaObj.originale) {
+    if (areScadenzeDuplicate(scadenze[i], {
+      testo: testoAzione,
+      data: scadenzaObj.originale,
+      dataRisolta: scadenzaObj.dataRisolta || null
+    })) {
       return;
     }
   }
@@ -2346,6 +2895,30 @@ function normalizzaDurataStimata(valore) {
   return !isNaN(durata) && durata > 0 ? durata : null;
 }
 
+function normalizzaOrario(valore) {
+  var raw = String(valore || "").trim();
+  var match;
+  var ore;
+  var minuti;
+
+  if (!raw) return null;
+
+  match = raw.match(/^([01]?\d|2[0-3])(?::([0-5]\d))?$/);
+  if (!match) return null;
+
+  ore = String(parseInt(match[1], 10)).padStart(2, "0");
+  minuti = typeof match[2] === "string" ? match[2] : "00";
+  return ore + ":" + minuti;
+}
+
+function estraiOrarioDaTesto(testo) {
+  var source = String(testo || "").toLowerCase();
+  var match = source.match(/\balle\s+([01]?\d|2[0-3])(?::([0-5]\d))?\b/i);
+
+  if (!match) return null;
+  return normalizzaOrario(match[1] + ":" + (match[2] || "00"));
+}
+
 function normalizzaEnergiaStimata(valore) {
   if (typeof valore !== "string") return null;
   var energia = valore.toLowerCase();
@@ -2354,16 +2927,21 @@ function normalizzaEnergiaStimata(valore) {
 
 function normalizzaAzioneSalvata(azione) {
   if (!azione || typeof azione !== "object") {
-    return { testo: "", priorita: "bassa", durataStimataMinuti: null, energiaStimata: null };
+    return { testo: "", priorita: "bassa", durataStimataMinuti: null, energiaStimata: null, time: null };
   }
 
   return {
-    testo: azione.testo || "",
+    testo: String(azione.testo || "").trim(),
     priorita: azione.priorita || "bassa",
     scadenzaOriginale: azione.scadenzaOriginale || null,
     dataISO: azione.dataISO || null,
+    time: normalizzaOrario(azione.time),
     durataStimataMinuti: normalizzaDurataStimata(azione.durataStimataMinuti),
-    energiaStimata: normalizzaEnergiaStimata(azione.energiaStimata)
+    energiaStimata: normalizzaEnergiaStimata(azione.energiaStimata),
+    completato: azione.completato === true,
+    completedAt: azione.completedAt || null,
+    aggiunta: azione.aggiunta || null,
+    id: azione.id || null
   };
 }
 
@@ -2375,19 +2953,19 @@ function convertiRispostaBackend(data) {
   if (data.azioni && Array.isArray(data.azioni)) {
     for (var i = 0; i < data.azioni.length; i++) {
       var a = data.azioni[i];
-      azioni.push(normalizzaAzioneSalvata({
+      aggiungiAzioneUnica(azioni, normalizzaAzioneSalvata({
         testo: a.testo || "",
         priorita: a.priorita || "bassa",
         scadenzaOriginale: a.scadenzaOriginale || null,
         dataISO: a.dataISO || null,
+        time: a.time || null,
         durataStimataMinuti: a.durataStimataMinuti,
         energiaStimata: a.energiaStimata
       }));
 
       if (a.scadenzaOriginale) {
-        scadenze.push({
-          testo: a.testo || "",
-          data: a.scadenzaOriginale,
+        aggiungiScadenzaUnica(scadenze, a.testo || "", {
+          originale: a.scadenzaOriginale,
           dataRisolta: a.dataISO || null
         });
       }
@@ -2398,24 +2976,16 @@ function convertiRispostaBackend(data) {
   if (data.scadenze && Array.isArray(data.scadenze)) {
     for (var s = 0; s < data.scadenze.length; s++) {
       var sc = data.scadenze[s];
-      var giaTrovata = false;
-      for (var e = 0; e < scadenze.length; e++) {
-        if (scadenze[e].testo === sc.titolo && scadenze[e].data === sc.scadenzaOriginale) {
-          giaTrovata = true;
-          break;
-        }
-      }
-      if (!giaTrovata) {
-        scadenze.push({
-          testo: sc.titolo || "",
-          data: sc.scadenzaOriginale || "",
+      if (sc.scadenzaOriginale || sc.dataISO) {
+        aggiungiScadenzaUnica(scadenze, sc.titolo || "", {
+          originale: sc.scadenzaOriginale || "",
           dataRisolta: sc.dataISO || null
         });
       }
     }
   }
 
-  return { azioni: azioni, scadenze: scadenze };
+  return { azioni: dedupeTasks(azioni), scadenze: dedupeScadenze(scadenze) };
 }
 
 // Parser locale (fallback se il backend non è raggiungibile)
@@ -2450,7 +3020,8 @@ function analizzaTestoLocale(testo) {
           azioniGruppo.push({
             testo: azioneEstratta.testo,
             parteOriginale: parte,
-            dateLocali: scadenzeParte
+            dateLocali: scadenzeParte,
+            time: estraiOrarioDaTesto(parte)
           });
         }
 
@@ -2472,7 +3043,7 @@ function analizzaTestoLocale(testo) {
         var az = azioniGruppo[a];
         var priorita = calcolaPrioritaFrase(az.parteOriginale, az.testo, az.dateLocali);
 
-        aggiungiAzioneUnica(azioni, { testo: az.testo, priorita: priorita });
+        aggiungiAzioneUnica(azioni, { testo: az.testo, priorita: priorita, time: az.time || null });
 
         for (var sd = 0; sd < az.dateLocali.length; sd++) {
           aggiungiScadenzaUnica(scadenze, az.testo, az.dateLocali[sd]);
@@ -2481,25 +3052,28 @@ function analizzaTestoLocale(testo) {
     }
   }
 
-  return { azioni: azioni, scadenze: scadenze };
+  return { azioni: dedupeTasks(azioni), scadenze: dedupeScadenze(scadenze) };
 }
 
 // Mostra i risultati nella pagina e salva in localStorage/archivio
 function mostraRisultati(azioni, scadenze) {
-  azioniCorrente = azioni;
-  scadenzeCorrente = scadenze;
+  var azioniDeduplicate = dedupeTasks(azioni);
+  var scadenzeDeduplicate = dedupeScadenze(scadenze);
 
-  riempiListaAzioni("contenitore-azioni", azioni);
-  riempiListaScadenze("lista-scadenze", scadenze);
+  azioniCorrente = azioniDeduplicate;
+  scadenzeCorrente = scadenzeDeduplicate;
 
-  localStorage.setItem("actionflow_checklist", JSON.stringify(azioni));
-  localStorage.setItem("actionflow_scadenze", JSON.stringify(scadenze));
+  riempiListaAzioni("contenitore-azioni", azioniCorrente);
+  riempiListaScadenze("lista-scadenze", scadenzeCorrente);
 
-  salvaInArchivio(azioni, scadenze);
+  localStorage.setItem("actionflow_checklist", JSON.stringify(azioniCorrente));
+  localStorage.setItem("actionflow_scadenze", JSON.stringify(scadenzeCorrente));
+
+  salvaInArchivio(azioniCorrente, scadenzeCorrente);
   refreshDailyPlanIfPresent();
 
-  document.getElementById("box-azioni").style.display = azioni.length > 0 ? "block" : "none";
-  document.getElementById("box-scadenze").style.display = scadenze.length > 0 ? "block" : "none";
+  document.getElementById("box-azioni").style.display = azioniCorrente.length > 0 ? "block" : "none";
+  document.getElementById("box-scadenze").style.display = scadenzeCorrente.length > 0 ? "block" : "none";
 
   document.getElementById("risultati").style.display = "block";
 }
@@ -2614,7 +3188,13 @@ function leggiArchivioAzioni() {
     var dati = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(dati)) return [];
 
-    return dati.map(function(azione) {
+    var deduplicated = dedupeTasks(dati);
+
+    if (JSON.stringify(dati) !== JSON.stringify(deduplicated)) {
+      localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(deduplicated));
+    }
+
+    return deduplicated.map(function(azione) {
       var normalizzata = normalizzaAzioneSalvata(azione);
       if (azione && azione.aggiunta) {
         normalizzata.aggiunta = azione.aggiunta;
@@ -2628,67 +3208,60 @@ function leggiArchivioScadenze() {
   try {
     var raw = localStorage.getItem("actionflow_archivio_scadenze");
     var dati = raw ? JSON.parse(raw) : [];
-    return Array.isArray(dati) ? dati : [];
+    var deduplicated = dedupeScadenze(Array.isArray(dati) ? dati : []);
+
+    if (JSON.stringify(dati || []) !== JSON.stringify(deduplicated)) {
+      localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(deduplicated));
+    }
+
+    return deduplicated;
   } catch (e) { return []; }
 }
 
 function salvaInArchivio(nuoveAzioni, nuoveScadenze) {
-  var archAzioni = leggiArchivioAzioni();
-  var archScadenze = leggiArchivioScadenze();
+  var archAzioni = dedupeTasks(leggiArchivioAzioni());
+  var archScadenze = dedupeScadenze(leggiArchivioScadenze());
+  var cleanedAzioni = dedupeTasks(nuoveAzioni);
+  var cleanedScadenze = dedupeScadenze(nuoveScadenze);
   var timestamp = new Date().toISOString();
 
-  for (var i = 0; i < nuoveAzioni.length; i++) {
+  for (var i = 0; i < cleanedAzioni.length; i++) {
     var esiste = false;
     for (var j = 0; j < archAzioni.length; j++) {
-      if (archAzioni[j].testo === nuoveAzioni[i].testo) {
-        // Aggiorna priorità se più alta
-        if (livelloPriorita(nuoveAzioni[i].priorita) > livelloPriorita(archAzioni[j].priorita)) {
-          archAzioni[j].priorita = nuoveAzioni[i].priorita;
-        }
-        if (normalizzaDurataStimata(nuoveAzioni[i].durataStimataMinuti) !== null) {
-          archAzioni[j].durataStimataMinuti = normalizzaDurataStimata(nuoveAzioni[i].durataStimataMinuti);
-        }
-        if (normalizzaEnergiaStimata(nuoveAzioni[i].energiaStimata)) {
-          archAzioni[j].energiaStimata = normalizzaEnergiaStimata(nuoveAzioni[i].energiaStimata);
-        }
-        if (nuoveAzioni[i].scadenzaOriginale) {
-          archAzioni[j].scadenzaOriginale = nuoveAzioni[i].scadenzaOriginale;
-        }
-        if (nuoveAzioni[i].dataISO) {
-          archAzioni[j].dataISO = nuoveAzioni[i].dataISO;
-        }
+      if (areTasksDuplicate(archAzioni[j], cleanedAzioni[i])) {
+        archAzioni[j] = mergeTaskRecords(archAzioni[j], cleanedAzioni[i]);
         esiste = true;
         break;
       }
     }
     if (!esiste) {
-      var nuovaAzione = normalizzaAzioneSalvata(nuoveAzioni[i]);
+      var nuovaAzione = normalizzaAzioneSalvata(cleanedAzioni[i]);
       nuovaAzione.aggiunta = timestamp;
       archAzioni.push(nuovaAzione);
     }
   }
 
-  for (var s = 0; s < nuoveScadenze.length; s++) {
+  for (var s = 0; s < cleanedScadenze.length; s++) {
     var duplicata = false;
     for (var k = 0; k < archScadenze.length; k++) {
-      if (archScadenze[k].testo === nuoveScadenze[s].testo &&
-          archScadenze[k].data === nuoveScadenze[s].data) {
+      if (areScadenzeDuplicate(archScadenze[k], cleanedScadenze[s])) {
+        archScadenze[k] = mergeScadenzaRecords(archScadenze[k], cleanedScadenze[s]);
         duplicata = true;
         break;
       }
     }
     if (!duplicata) {
       archScadenze.push({
-        testo: nuoveScadenze[s].testo,
-        data: nuoveScadenze[s].data,
-        dataRisolta: nuoveScadenze[s].dataRisolta || null,
+        testo: cleanedScadenze[s].testo,
+        data: cleanedScadenze[s].data,
+        dataRisolta: cleanedScadenze[s].dataRisolta || null,
         aggiunta: timestamp
       });
     }
   }
 
-  localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(archAzioni));
-  localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(archScadenze));
+  localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(dedupeTasks(archAzioni)));
+  localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(dedupeScadenze(archScadenze)));
 }
 
 
@@ -2938,6 +3511,8 @@ function attivaEditAzione(li, azione, azioniArr, scadenzeArr, onSave) {
 }
 
 function salvaDatiCorrente() {
+  azioniCorrente = dedupeTasks(azioniCorrente);
+  scadenzeCorrente = dedupeScadenze(scadenzeCorrente);
   localStorage.setItem("actionflow_checklist", JSON.stringify(azioniCorrente));
   localStorage.setItem("actionflow_scadenze", JSON.stringify(scadenzeCorrente));
   salvaInArchivio(azioniCorrente, scadenzeCorrente);
@@ -3125,7 +3700,7 @@ function inizializzaFocusPage() {
   var emptyState = document.getElementById("focus-empty-state");
   var plan = loadDailyPlan();
   var focus = getFocusTasks(plan);
-  var haContenuto = !!(focus.ora || focus.dopo.length || focus.seAvanzaTempo.length);
+  var haContenuto = !!(focus.ora || focus.dopo.length || focus.piuTardiOggi.length || focus.seAvanzaTempo.length);
 
   if (!focusSection) return;
 

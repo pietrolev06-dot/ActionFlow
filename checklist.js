@@ -11,6 +11,35 @@
   }
 })();
 
+function normalizeText(text) {
+  return String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function dedupeChecklistItems(items) {
+  var source = Array.isArray(items) ? items : [];
+  var deduped = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var task = normalizzaAzioneChecklist(source[i]);
+    var merged = false;
+    if (!task) continue;
+
+    for (var j = 0; j < deduped.length; j++) {
+      if (normalizeText(deduped[j].testo) === normalizeText(task.testo)) {
+        if (task.priorita === "alta" || (task.priorita === "media" && deduped[j].priorita === "bassa")) {
+          deduped[j].priorita = task.priorita;
+        }
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) deduped.push(task);
+  }
+
+  return deduped;
+}
+
 function leggiChecklist() {
   var raw = localStorage.getItem("actionflow_checklist");
   if (!raw) return [];
@@ -18,7 +47,11 @@ function leggiChecklist() {
   try {
     var dati = JSON.parse(raw);
     if (!Array.isArray(dati)) return [];
-    return dati;
+    var cleaned = dedupeChecklistItems(dati);
+    if (JSON.stringify(dati) !== JSON.stringify(cleaned)) {
+      localStorage.setItem("actionflow_checklist", JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch (e) {
     return [];
   }

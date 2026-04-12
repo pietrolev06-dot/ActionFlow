@@ -15,11 +15,157 @@
   }
 })();
 
+function normalizeText(text) {
+  return String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function normalizzaAzioneDashboard(azione) {
+  if (!azione || typeof azione !== "object") return null;
+  if (!azione.testo) return null;
+
+  var rawTime = azione.time ? String(azione.time).trim() : null;
+
+  return {
+    testo: String(azione.testo).trim(),
+    priorita: azione.priorita || "bassa",
+    scadenzaOriginale: azione.scadenzaOriginale || null,
+    dataISO: azione.dataISO || null,
+    time: /^([01]?\d|2[0-3]):([0-5]\d)$/.test(rawTime || "") ? rawTime : null,
+    durataStimataMinuti: normalizzaDurataStimata(azione.durataStimataMinuti),
+    energiaStimata: normalizzaEnergiaStimata(azione.energiaStimata),
+    aggiunta: azione.aggiunta || null,
+    completato: azione.completato === true,
+    completedAt: azione.completedAt || null
+  };
+}
+
+function areTaskDuplicates(a, b) {
+  var textA = normalizeText(a && a.testo ? a.testo : "");
+  var textB = normalizeText(b && b.testo ? b.testo : "");
+  var dateA = a && a.dataISO ? String(a.dataISO).trim() : "";
+  var dateB = b && b.dataISO ? String(b.dataISO).trim() : "";
+
+  if (!textA || !textB || textA !== textB) return false;
+  if (dateA && dateB) return dateA === dateB;
+  return true;
+}
+
+function mergeTaskRecord(existing, incoming) {
+  var base = normalizzaAzioneDashboard(existing) || normalizzaAzioneDashboard(incoming);
+  var next = normalizzaAzioneDashboard(incoming) || {};
+  if (!base) return null;
+
+  if (livelloPriorita(next.priorita || "bassa") > livelloPriorita(base.priorita || "bassa")) {
+    base.priorita = next.priorita;
+  }
+  if (next.scadenzaOriginale) base.scadenzaOriginale = next.scadenzaOriginale;
+  if (next.dataISO) base.dataISO = next.dataISO;
+  if (next.time) base.time = next.time;
+  if (next.durataStimataMinuti !== null) base.durataStimataMinuti = next.durataStimataMinuti;
+  if (next.energiaStimata) base.energiaStimata = next.energiaStimata;
+  if (existing && existing.aggiunta) base.aggiunta = existing.aggiunta;
+  if (incoming && incoming.aggiunta && !base.aggiunta) base.aggiunta = incoming.aggiunta;
+  if ((existing && existing.completato === true) || (incoming && incoming.completato === true)) base.completato = true;
+  if (existing && existing.completedAt) base.completedAt = existing.completedAt;
+  if (incoming && incoming.completedAt) base.completedAt = incoming.completedAt;
+  return base;
+}
+
+function dedupeTaskList(items) {
+  var source = Array.isArray(items) ? items : [];
+  var deduped = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var current = normalizzaAzioneDashboard(source[i]);
+    var merged = false;
+    if (!current) continue;
+
+    for (var j = 0; j < deduped.length; j++) {
+      if (areTaskDuplicates(current, deduped[j])) {
+        deduped[j] = mergeTaskRecord(deduped[j], source[i]);
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) deduped.push(current);
+  }
+
+  return deduped;
+}
+
+function normalizzaScadenzaDashboard(scadenza) {
+  if (!scadenza || typeof scadenza !== "object" || !scadenza.testo) return null;
+  return {
+    testo: String(scadenza.testo).trim(),
+    data: scadenza.data || "",
+    dataRisolta: scadenza.dataRisolta || scadenza.dataISO || null,
+    aggiunta: scadenza.aggiunta || null
+  };
+}
+
+function getNormalizedDeadlineDate(scadenza) {
+  if (!scadenza) return "";
+  if (scadenza.dataRisolta) return String(scadenza.dataRisolta).trim();
+  if (scadenza.dataISO) return String(scadenza.dataISO).trim();
+  return normalizeText(scadenza.data || "");
+}
+
+function areDeadlineDuplicates(a, b) {
+  var textA = normalizeText(a && a.testo ? a.testo : "");
+  var textB = normalizeText(b && b.testo ? b.testo : "");
+  if (!textA || !textB || textA !== textB) return false;
+  return getNormalizedDeadlineDate(a) === getNormalizedDeadlineDate(b);
+}
+
+function mergeDeadlineRecord(existing, incoming) {
+  var base = normalizzaScadenzaDashboard(existing) || normalizzaScadenzaDashboard(incoming);
+  if (!base) return null;
+  if (incoming && incoming.data) base.data = incoming.data;
+  if (incoming && (incoming.dataRisolta || incoming.dataISO)) base.dataRisolta = incoming.dataRisolta || incoming.dataISO;
+  if (existing && existing.aggiunta) base.aggiunta = existing.aggiunta;
+  if (incoming && incoming.aggiunta && !base.aggiunta) base.aggiunta = incoming.aggiunta;
+  return base;
+}
+
+function dedupeDeadlineList(items) {
+  var source = Array.isArray(items) ? items : [];
+  var deduped = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var current = normalizzaScadenzaDashboard(source[i]);
+    var merged = false;
+    if (!current) continue;
+
+    for (var j = 0; j < deduped.length; j++) {
+      if (areDeadlineDuplicates(current, deduped[j])) {
+        deduped[j] = mergeDeadlineRecord(deduped[j], source[i]);
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) deduped.push(current);
+  }
+
+  return deduped;
+}
+
+function salvaArchivioAzioni(azioni) {
+  localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(dedupeTaskList(azioni)));
+}
+
+function salvaArchivioScadenze(scadenze) {
+  localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(dedupeDeadlineList(scadenze)));
+}
+
 function leggiArchivioAzioni() {
   try {
     var raw = localStorage.getItem("actionflow_archivio_azioni");
     var dati = raw ? JSON.parse(raw) : [];
-    return Array.isArray(dati) ? dati : [];
+    var cleaned = dedupeTaskList(Array.isArray(dati) ? dati : []);
+    if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaArchivioAzioni(cleaned);
+    return cleaned;
   } catch (e) { return []; }
 }
 
@@ -27,7 +173,9 @@ function leggiArchivioScadenze() {
   try {
     var raw = localStorage.getItem("actionflow_archivio_scadenze");
     var dati = raw ? JSON.parse(raw) : [];
-    return Array.isArray(dati) ? dati : [];
+    var cleaned = dedupeDeadlineList(Array.isArray(dati) ? dati : []);
+    if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaArchivioScadenze(cleaned);
+    return cleaned;
   } catch (e) { return []; }
 }
 
@@ -35,24 +183,28 @@ function leggiChecklistCorrente() {
   try {
     var raw = localStorage.getItem("actionflow_checklist");
     var dati = raw ? JSON.parse(raw) : [];
-    return Array.isArray(dati) ? dati : [];
+    var cleaned = dedupeTaskList(Array.isArray(dati) ? dati : []);
+    if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaChecklistCorrente(cleaned);
+    return cleaned;
   } catch (e) { return []; }
 }
 
 function salvaChecklistCorrente(azioni) {
-  localStorage.setItem("actionflow_checklist", JSON.stringify(azioni));
+  localStorage.setItem("actionflow_checklist", JSON.stringify(dedupeTaskList(azioni)));
 }
 
 function leggiScadenzeCorrenti() {
   try {
     var raw = localStorage.getItem("actionflow_scadenze");
     var dati = raw ? JSON.parse(raw) : [];
-    return Array.isArray(dati) ? dati : [];
+    var cleaned = dedupeDeadlineList(Array.isArray(dati) ? dati : []);
+    if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaScadenzeCorrenti(cleaned);
+    return cleaned;
   } catch (e) { return []; }
 }
 
 function salvaScadenzeCorrenti(scadenze) {
-  localStorage.setItem("actionflow_scadenze", JSON.stringify(scadenze));
+  localStorage.setItem("actionflow_scadenze", JSON.stringify(dedupeDeadlineList(scadenze)));
 }
 
 function leggiAzioniCompletate() {
@@ -161,11 +313,13 @@ function resolveTaskForDisplay(task) {
   var scadenza = trovaScadenzaAzione(task && task.testo ? task.testo : "");
   var dataISO = task && task.dataISO ? task.dataISO : (scadenza ? scadenza.dataRisolta || null : null);
   var scadenzaOriginale = task && task.scadenzaOriginale ? task.scadenzaOriginale : (scadenza ? scadenza.data || null : null);
+  var time = task && task.time ? String(task.time).trim() : null;
   var resolved = {
     testo: task && task.testo ? task.testo : "",
     priorita: task && task.priorita ? task.priorita : "bassa",
     dataISO: dataISO,
     scadenzaOriginale: scadenzaOriginale,
+    time: /^([01]?\d|2[0-3]):([0-5]\d)$/.test(time || "") ? time : null,
     durataStimataMinuti: task ? task.durataStimataMinuti : null,
     energiaStimata: task ? task.energiaStimata : null
   };
@@ -219,7 +373,7 @@ function impostaCompletamentoTask(testo, completato) {
     completato: completato,
     completedAt: completedAt
   });
-  localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(archAzioni));
+  salvaArchivioAzioni(archAzioni);
 
   var checklist = leggiChecklistCorrente();
   aggiornaAzioneInLista(checklist, testo, {
@@ -443,6 +597,13 @@ function renderDashboardAzioni() {
       badgePriorita.textContent = azDisplay.prioritaDinamica || "media";
       meta.appendChild(badgePriorita);
 
+      if (azDisplay.time) {
+        var badgeTime = document.createElement("span");
+        badgeTime.className = "badge-time dashboard-badge-time";
+        badgeTime.textContent = azDisplay.time;
+        meta.appendChild(badgeTime);
+      }
+
       var indicator = document.createElement("span");
       indicator.className = "dashboard-task-expand-indicator";
       indicator.setAttribute("aria-hidden", "true");
@@ -471,6 +632,13 @@ function renderDashboardAzioni() {
         durata.className = "azione-durata dashboard-azione-durata";
         durata.textContent = durataStimata + " min";
         bodyMeta.appendChild(durata);
+      }
+
+      if (azDisplay.time) {
+        var bodyBadgeTime = document.createElement("span");
+        bodyBadgeTime.className = "badge-time dashboard-badge-time";
+        bodyBadgeTime.textContent = azDisplay.time;
+        bodyMeta.appendChild(bodyBadgeTime);
       }
 
       if (energiaStimata) {
@@ -609,7 +777,7 @@ function attivaEditAzioneDash(li, azione) {
       durataStimataMinuti: nuovaDurata,
       energiaStimata: nuovaEnergia
     });
-    localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(archAzioni));
+    salvaArchivioAzioni(archAzioni);
 
     var checklist = leggiChecklistCorrente();
     aggiornaAzioneInLista(checklist, vecchioTesto, {
@@ -624,7 +792,7 @@ function attivaEditAzioneDash(li, azione) {
     // Aggiorna archivio scadenze
     var scadenze = leggiArchivioScadenze();
     aggiornaScadenzaInLista(scadenze, vecchioTesto, nuovoTesto, nuovaData);
-    localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(scadenze));
+    salvaArchivioScadenze(scadenze);
 
     var scadenzeCorrenti = leggiScadenzeCorrenti();
     aggiornaScadenzaInLista(scadenzeCorrenti, vecchioTesto, nuovoTesto, nuovaData);
