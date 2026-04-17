@@ -41,15 +41,12 @@ function dedupeChecklistItems(items) {
 }
 
 function leggiChecklist() {
-  var raw = localStorage.getItem("actionflow_checklist");
-  if (!raw) return [];
-
   try {
-    var dati = JSON.parse(raw);
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_checklist");
     if (!Array.isArray(dati)) return [];
     var cleaned = dedupeChecklistItems(dati);
     if (JSON.stringify(dati) !== JSON.stringify(cleaned)) {
-      localStorage.setItem("actionflow_checklist", JSON.stringify(cleaned));
+      window.ActionFlowAuth.writeOwnedArray("actionflow_checklist", cleaned);
     }
     return cleaned;
   } catch (e) {
@@ -58,20 +55,11 @@ function leggiChecklist() {
 }
 
 function leggiCompletate() {
-  var raw = localStorage.getItem("actionflow_checklist_done");
-  if (!raw) return {};
-
-  try {
-    var dati = JSON.parse(raw);
-    if (!dati || typeof dati !== "object") return {};
-    return dati;
-  } catch (e) {
-    return {};
-  }
+  return window.ActionFlowAuth.readScopedObject("actionflow_checklist_done");
 }
 
 function salvaCompletate(completate) {
-  localStorage.setItem("actionflow_checklist_done", JSON.stringify(completate));
+  window.ActionFlowAuth.writeScopedObject("actionflow_checklist_done", completate);
 }
 
 function normalizzaAzioneChecklist(item) {
@@ -150,8 +138,8 @@ function renderChecklist() {
 }
 
 function svuotaChecklist() {
-  localStorage.removeItem("actionflow_checklist");
-  localStorage.removeItem("actionflow_checklist_done");
+  window.ActionFlowAuth.clearOwnedArray("actionflow_checklist");
+  window.ActionFlowAuth.clearScopedObject("actionflow_checklist_done");
   renderChecklist();
 }
 
@@ -160,4 +148,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
   var bottoneSvuota = document.getElementById("bottone-svuota-checklist");
   bottoneSvuota.addEventListener("click", svuotaChecklist);
+});
+
+window.addEventListener("actionflow-auth-ready", function() {
+  renderChecklist();
 });

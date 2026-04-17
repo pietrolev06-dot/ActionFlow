@@ -19,6 +19,7 @@
 // Stato corrente della sessione (per modifica inline)
 var azioniCorrente = [];
 var scadenzeCorrente = [];
+var daPianificareCorrente = [];
 var voiceRecognition = null;
 var voiceInputAttivo = false;
 var voiceBaseText = "";
@@ -80,6 +81,9 @@ function mergeTaskRecords(existingTask, incomingTask) {
   }
   if (existingTask && existingTask.completedAt) merged.completedAt = existingTask.completedAt;
   if (incomingTask && incomingTask.completedAt) merged.completedAt = incomingTask.completedAt;
+  if ((existingTask && existingTask.syncedToCalendar === true) || (incomingTask && incomingTask.syncedToCalendar === true)) {
+    merged.syncedToCalendar = true;
+  }
 
   return merged;
 }
@@ -132,7 +136,8 @@ function mergeScadenzaRecords(existingDeadline, incomingDeadline) {
   var merged = {
     testo: (incomingDeadline && incomingDeadline.testo) || (existingDeadline && existingDeadline.testo) || "",
     data: (incomingDeadline && incomingDeadline.data) || (existingDeadline && existingDeadline.data) || "",
-    dataRisolta: (incomingDeadline && incomingDeadline.dataRisolta) || (incomingDeadline && incomingDeadline.dataISO) || (existingDeadline && existingDeadline.dataRisolta) || (existingDeadline && existingDeadline.dataISO) || null
+    dataRisolta: (incomingDeadline && incomingDeadline.dataRisolta) || (incomingDeadline && incomingDeadline.dataISO) || (existingDeadline && existingDeadline.dataRisolta) || (existingDeadline && existingDeadline.dataISO) || null,
+    userId: (incomingDeadline && incomingDeadline.userId) || (existingDeadline && existingDeadline.userId) || null
   };
 
   if (existingDeadline && existingDeadline.aggiunta) merged.aggiunta = existingDeadline.aggiunta;
@@ -189,12 +194,11 @@ function cleanupStoredTaskDuplicates() {
 
   for (var i = 0; i < storageEntries.length; i++) {
     try {
-      var raw = localStorage.getItem(storageEntries[i].key);
-      var parsed = raw ? JSON.parse(raw) : [];
+      var parsed = window.ActionFlowAuth.readOwnedArray(storageEntries[i].key);
       var cleaned = storageEntries[i].type === "task" ? dedupeTasks(parsed) : dedupeScadenze(parsed);
 
       if (JSON.stringify(parsed || []) !== JSON.stringify(cleaned)) {
-        localStorage.setItem(storageEntries[i].key, JSON.stringify(cleaned));
+        window.ActionFlowAuth.writeOwnedArray(storageEntries[i].key, cleaned);
         changed = true;
       }
     } catch (e) {}
@@ -206,13 +210,13 @@ function cleanupStoredTaskDuplicates() {
 cleanupStoredTaskDuplicates();
 
 function clearAllTaskDataStorage() {
-  localStorage.removeItem("actionflow_archivio_azioni");
-  localStorage.removeItem("actionflow_archivio_scadenze");
-  localStorage.removeItem("actionflow_checklist");
-  localStorage.removeItem("actionflow_scadenze");
-  localStorage.removeItem("actionflow_azioni_done");
-  localStorage.removeItem("actionflow_checklist_done");
-  localStorage.removeItem(DAILY_PLAN_STORAGE_KEY);
+  window.ActionFlowAuth.clearOwnedArray("actionflow_archivio_azioni");
+  window.ActionFlowAuth.clearOwnedArray("actionflow_archivio_scadenze");
+  window.ActionFlowAuth.clearOwnedArray("actionflow_checklist");
+  window.ActionFlowAuth.clearOwnedArray("actionflow_scadenze");
+  window.ActionFlowAuth.clearScopedObject("actionflow_azioni_done");
+  window.ActionFlowAuth.clearScopedObject("actionflow_checklist_done");
+  window.ActionFlowAuth.clearScopedObject(DAILY_PLAN_STORAGE_KEY);
 
   azioniCorrente = [];
   scadenzeCorrente = [];
@@ -250,6 +254,10 @@ function normalizeDailyPlan(plan) {
     restaDaFareOggi: sezioni.restaDaFareOggi,
     seAvanzaTempo: sezioni.seAvanzaTempo,
     daFareOggi: sezioni.mattina.concat(sezioni.pomeriggio).concat(sezioni.restaDaFareOggi),
+    meta: plan.meta && typeof plan.meta === "object" ? {
+      taskSignature: plan.meta.taskSignature || "",
+      sourceTaskCount: typeof plan.meta.sourceTaskCount === "number" ? plan.meta.sourceTaskCount : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.restaDaFareOggi.length + sezioni.seAvanzaTempo.length
+    } : null,
     totali: {
       taskConsiderati: plan.totali && typeof plan.totali.taskConsiderati === "number" ? plan.totali.taskConsiderati : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.restaDaFareOggi.length + sezioni.seAvanzaTempo.length,
       minutiMattina: minutiMattina,
@@ -380,13 +388,14 @@ function renderAnalysisPreview(azioni, scadenze) {
   }
 }
 
-function openAnalysisPreview(azioni, scadenze) {
+function openAnalysisPreview(azioni, scadenze, daPianificare) {
   var cleanedAzioni = dedupeTasks(azioni);
   var cleanedScadenze = dedupeScadenze(scadenze);
 
   pendingAnalysisResult = {
     azioni: cleanedAzioni,
-    scadenze: cleanedScadenze
+    scadenze: cleanedScadenze,
+    daPianificare: Array.isArray(daPianificare) ? daPianificare : []
   };
 
   renderAnalysisPreview(pendingAnalysisResult.azioni, pendingAnalysisResult.scadenze);
@@ -399,7 +408,7 @@ function confirmAnalysisPreview() {
     return;
   }
 
-  mostraRisultati(pendingAnalysisResult.azioni, pendingAnalysisResult.scadenze);
+  mostraRisultati(pendingAnalysisResult.azioni, pendingAnalysisResult.scadenze, pendingAnalysisResult.daPianificare);
   closeAnalysisPreviewModal();
 }
 
@@ -889,8 +898,7 @@ function getStoredScadenzaMap() {
   }
 
   try {
-    var raw = localStorage.getItem("actionflow_scadenze");
-    var correnti = dedupeScadenze(raw ? JSON.parse(raw) : []);
+    var correnti = dedupeScadenze(window.ActionFlowAuth.readOwnedArray("actionflow_scadenze"));
     if (Array.isArray(correnti)) {
       for (var j = 0; j < correnti.length; j++) {
         if (correnti[j] && correnti[j].testo) {
@@ -932,13 +940,11 @@ function getSavedTasksForPlanning() {
   var tasks = [];
 
   try {
-    var raw = localStorage.getItem("actionflow_archivio_azioni");
-    var archivio = raw ? dedupeTasks(JSON.parse(raw)) : [];
+    var archivio = dedupeTasks(window.ActionFlowAuth.readOwnedArray("actionflow_archivio_azioni"));
     var sorgente = Array.isArray(archivio) && archivio.length > 0 ? archivio : [];
 
     if (sorgente.length === 0) {
-      var rawChecklist = localStorage.getItem("actionflow_checklist");
-      var checklist = rawChecklist ? dedupeTasks(JSON.parse(rawChecklist)) : [];
+      var checklist = dedupeTasks(window.ActionFlowAuth.readOwnedArray("actionflow_checklist"));
       if (Array.isArray(checklist)) {
         sorgente = checklist;
       }
@@ -1789,9 +1795,64 @@ function buildDailyPlan(tasks) {
   return buildSmartDailyPlan(tasks);
 }
 
-function saveDailyPlan(plan) {
+function getDailyPlanTaskSignature(tasks) {
+  var source = Array.isArray(tasks) ? tasks : [];
+  var normalized = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var task = source[i];
+    if (!task || !task.testo) continue;
+
+    normalized.push([
+      task.id || generaIdAzione(task.testo || ""),
+      normalizeText(task.testo || ""),
+      task.priorita || "bassa",
+      task.dataISO || "",
+      task.time || "",
+      task.completato ? "1" : "0"
+    ].join("|"));
+  }
+
+  normalized.sort();
+  return normalized.join("||");
+}
+
+function isDailyPlanStale(plan, tasks) {
   var normalizedPlan = normalizeDailyPlan(plan);
-  localStorage.setItem(DAILY_PLAN_STORAGE_KEY, JSON.stringify(normalizedPlan));
+  var sourceTasks = Array.isArray(tasks) ? tasks : [];
+  var taskSignature = getDailyPlanTaskSignature(sourceTasks);
+  var sourceTaskCount = sourceTasks.length;
+  var planTaskCount = normalizedPlan && normalizedPlan.meta && typeof normalizedPlan.meta.sourceTaskCount === "number"
+    ? normalizedPlan.meta.sourceTaskCount
+    : (normalizedPlan && normalizedPlan.totali ? normalizedPlan.totali.taskConsiderati || 0 : 0);
+
+  if (!normalizedPlan) {
+    return sourceTaskCount > 0;
+  }
+
+  if (!normalizedPlan.meta || !normalizedPlan.meta.taskSignature) {
+    return true;
+  }
+
+  return normalizedPlan.meta.taskSignature !== taskSignature || planTaskCount !== sourceTaskCount;
+}
+
+function canUseScopedPlanningData() {
+  return !(window.ActionFlowAuth && typeof window.ActionFlowAuth.isLoaded === "function") || window.ActionFlowAuth.isLoaded();
+}
+
+function saveDailyPlan(plan, sourceTasks) {
+  var normalizedPlan = normalizeDailyPlan(plan);
+  var tasks = Array.isArray(sourceTasks) ? sourceTasks : [];
+
+  if (normalizedPlan) {
+    normalizedPlan.meta = {
+      taskSignature: getDailyPlanTaskSignature(tasks),
+      sourceTaskCount: tasks.length
+    };
+  }
+
+  window.ActionFlowAuth.writeScopedObject(DAILY_PLAN_STORAGE_KEY, normalizedPlan);
 
   if (DAILY_PLAN_DEBUG) {
     console.log("[ActionFlow][OrganizzaGiornata] saveDailyPlan", countDailyPlanTasks(normalizedPlan));
@@ -1802,8 +1863,8 @@ function saveDailyPlan(plan) {
 
 function loadDailyPlan() {
   try {
-    var raw = localStorage.getItem(DAILY_PLAN_STORAGE_KEY);
-    var plan = raw ? normalizeDailyPlan(JSON.parse(raw)) : null;
+    var rawPlan = window.ActionFlowAuth.readScopedObject(DAILY_PLAN_STORAGE_KEY);
+    var plan = rawPlan && Object.keys(rawPlan).length ? normalizeDailyPlan(rawPlan) : null;
 
     if (DAILY_PLAN_DEBUG && plan) {
       console.log("[ActionFlow][OrganizzaGiornata] loadDailyPlan", countDailyPlanTasks(plan));
@@ -2134,20 +2195,49 @@ function renderDailyPlan(plan, showEmptyState) {
 }
 
 function refreshDailyPlanIfPresent() {
-  if (!localStorage.getItem(DAILY_PLAN_STORAGE_KEY)) return null;
+  var existingPlan = window.ActionFlowAuth.readScopedObject(DAILY_PLAN_STORAGE_KEY);
+  if (!existingPlan || Object.keys(existingPlan).length === 0) return null;
 
-  var plan = buildDailyPlan(getSavedTasksForPlanning());
+  var tasks = getSavedTasksForPlanning();
+  var plan = buildDailyPlan(tasks);
   var sezioniPiano = getDailyPlanSections(plan);
-  var savedPlan = saveDailyPlan(plan);
+  var savedPlan = saveDailyPlan(plan, tasks);
   renderDailyPlan(savedPlan, sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length + sezioniPiano.restaDaFareOggi.length + sezioniPiano.seAvanzaTempo.length === 0);
   return savedPlan;
 }
 
+function ensureDailyPlanForCurrentTasks(showEmptyState) {
+  var savedPlan = loadDailyPlan();
+
+  if (!canUseScopedPlanningData()) {
+    renderDailyPlan(savedPlan, false);
+    return savedPlan;
+  }
+
+  var tasks = getSavedTasksForPlanning();
+
+  if (isDailyPlanStale(savedPlan, tasks)) {
+    savedPlan = saveDailyPlan(buildDailyPlan(tasks), tasks);
+  }
+
+  renderDailyPlan(savedPlan, !!showEmptyState);
+  return savedPlan;
+}
+
+function isDailyPlanPage() {
+  return window.location.pathname === "/organizza-giornata" || window.location.pathname.endsWith("/organizza-giornata.html");
+}
+
 function organizeDay() {
-  var plan = buildDailyPlan(getSavedTasksForPlanning());
-  var savedPlan = saveDailyPlan(plan);
+  var tasks = getSavedTasksForPlanning();
+  var plan = buildDailyPlan(tasks);
+  var savedPlan = saveDailyPlan(plan, tasks);
   renderDailyPlan(savedPlan, true);
-  openDailyPlanModal();
+
+  if (!isDailyPlanPage()) {
+    window.location.href = "/organizza-giornata";
+  }
+
   return savedPlan;
 }
 
@@ -2867,19 +2957,7 @@ function scaricaFileICS(contenuto) {
 }
 
 function esportaEventiCalendario() {
-  var raw = localStorage.getItem("actionflow_scadenze");
-  var scadenze = [];
-
-  if (raw) {
-    try {
-      var parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        scadenze = parsed;
-      }
-    } catch (err) {
-      scadenze = [];
-    }
-  }
+  var scadenze = window.ActionFlowAuth.readOwnedArray("actionflow_scadenze");
 
   var risultato = costruisciFileICS(scadenze);
   if (risultato.eventiValidi === 0) {
@@ -2927,7 +3005,7 @@ function normalizzaEnergiaStimata(valore) {
 
 function normalizzaAzioneSalvata(azione) {
   if (!azione || typeof azione !== "object") {
-    return { testo: "", priorita: "bassa", durataStimataMinuti: null, energiaStimata: null, time: null };
+    return { testo: "", priorita: "bassa", durataStimataMinuti: null, energiaStimata: null, time: null, userId: null, syncedToCalendar: false };
   }
 
   return {
@@ -2941,7 +3019,9 @@ function normalizzaAzioneSalvata(azione) {
     completato: azione.completato === true,
     completedAt: azione.completedAt || null,
     aggiunta: azione.aggiunta || null,
-    id: azione.id || null
+    id: azione.id || null,
+    userId: azione.userId || null,
+    syncedToCalendar: azione.syncedToCalendar === true
   };
 }
 
@@ -2949,6 +3029,7 @@ function normalizzaAzioneSalvata(azione) {
 function convertiRispostaBackend(data) {
   var azioni = [];
   var scadenze = [];
+  var daPianificare = [];
 
   if (data.azioni && Array.isArray(data.azioni)) {
     for (var i = 0; i < data.azioni.length; i++) {
@@ -2985,7 +3066,27 @@ function convertiRispostaBackend(data) {
     }
   }
 
-  return { azioni: dedupeTasks(azioni), scadenze: dedupeScadenze(scadenze) };
+  if (data.daPianificare && Array.isArray(data.daPianificare)) {
+    for (var p = 0; p < data.daPianificare.length; p++) {
+      var voce = data.daPianificare[p];
+      if (!voce || !voce.titolo) continue;
+
+      daPianificare.push({
+        id: voce.id || null,
+        titolo: voce.titolo || "",
+        riferimentoTemporale: voce.riferimentoTemporale || "",
+        tipoFlessibilita: voce.tipoFlessibilita || "flessibile",
+        durataStimataMinuti: normalizzaDurataStimata(voce.durataStimataMinuti),
+        energiaStimata: normalizzaEnergiaStimata(voce.energiaStimata) || "media"
+      });
+    }
+  }
+
+  return {
+    azioni: dedupeTasks(azioni),
+    scadenze: dedupeScadenze(scadenze),
+    daPianificare: daPianificare
+  };
 }
 
 // Parser locale (fallback se il backend non è raggiungibile)
@@ -3056,23 +3157,55 @@ function analizzaTestoLocale(testo) {
 }
 
 // Mostra i risultati nella pagina e salva in localStorage/archivio
-function mostraRisultati(azioni, scadenze) {
+function renderDaPianificare(lista) {
+  var contenitore = document.getElementById("lista-da-pianificare");
+  if (!contenitore) return;
+
+  contenitore.innerHTML = "";
+
+  for (var i = 0; i < lista.length; i++) {
+    var item = lista[i];
+    var li = document.createElement("li");
+
+    var titolo = document.createElement("strong");
+    titolo.textContent = item.titolo || "";
+    li.appendChild(titolo);
+
+    var dettaglio = document.createElement("div");
+    dettaglio.textContent = (item.riferimentoTemporale || "") + " • " + (item.tipoFlessibilita || "flessibile");
+    li.appendChild(dettaglio);
+
+    if (item.durataStimataMinuti || item.energiaStimata) {
+      var meta = document.createElement("div");
+      meta.textContent = "Durata: " + (item.durataStimataMinuti || "-") + " min • Energia: " + (item.energiaStimata || "-");
+      li.appendChild(meta);
+    }
+
+    contenitore.appendChild(li);
+  }
+}
+
+function mostraRisultati(azioni, scadenze, daPianificare) {
   var azioniDeduplicate = dedupeTasks(azioni);
   var scadenzeDeduplicate = dedupeScadenze(scadenze);
 
   azioniCorrente = azioniDeduplicate;
   scadenzeCorrente = scadenzeDeduplicate;
+  daPianificareCorrente = Array.isArray(daPianificare) ? daPianificare : [];
 
   riempiListaAzioni("contenitore-azioni", azioniCorrente);
   riempiListaScadenze("lista-scadenze", scadenzeCorrente);
+  renderDaPianificare(daPianificareCorrente);
 
-  localStorage.setItem("actionflow_checklist", JSON.stringify(azioniCorrente));
-  localStorage.setItem("actionflow_scadenze", JSON.stringify(scadenzeCorrente));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_checklist", azioniCorrente);
+  window.ActionFlowAuth.writeOwnedArray("actionflow_scadenze", scadenzeCorrente);
 
   salvaInArchivio(azioniCorrente, scadenzeCorrente);
   refreshDailyPlanIfPresent();
+  syncTasksToGoogleCalendarIfNeeded(azioniCorrente);
 
   document.getElementById("box-azioni").style.display = azioniCorrente.length > 0 ? "block" : "none";
+  document.getElementById("box-da-pianificare").style.display = daPianificareCorrente.length > 0 ? "block" : "none";
   document.getElementById("box-scadenze").style.display = scadenzeCorrente.length > 0 ? "block" : "none";
 
   document.getElementById("risultati").style.display = "block";
@@ -3145,7 +3278,7 @@ async function analizzaTesto() {
     console.log("[ActionFlow] Risposta backend parsed OK — azioni:", (data.azioni || []).length, "scadenze:", (data.scadenze || []).length);
 
     var risultato = convertiRispostaBackend(data);
-    openAnalysisPreview(risultato.azioni, risultato.scadenze);
+    openAnalysisPreview(risultato.azioni, risultato.scadenze, risultato.daPianificare);
 
   } catch (err) {
     var avviso = document.getElementById("messaggio-errore");
@@ -3184,14 +3317,13 @@ async function analizzaTesto() {
 
 function leggiArchivioAzioni() {
   try {
-    var raw = localStorage.getItem("actionflow_archivio_azioni");
-    var dati = raw ? JSON.parse(raw) : [];
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_archivio_azioni");
     if (!Array.isArray(dati)) return [];
 
     var deduplicated = dedupeTasks(dati);
 
     if (JSON.stringify(dati) !== JSON.stringify(deduplicated)) {
-      localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(deduplicated));
+      window.ActionFlowAuth.writeOwnedArray("actionflow_archivio_azioni", deduplicated);
     }
 
     return deduplicated.map(function(azione) {
@@ -3206,12 +3338,11 @@ function leggiArchivioAzioni() {
 
 function leggiArchivioScadenze() {
   try {
-    var raw = localStorage.getItem("actionflow_archivio_scadenze");
-    var dati = raw ? JSON.parse(raw) : [];
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_archivio_scadenze");
     var deduplicated = dedupeScadenze(Array.isArray(dati) ? dati : []);
 
     if (JSON.stringify(dati || []) !== JSON.stringify(deduplicated)) {
-      localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(deduplicated));
+      window.ActionFlowAuth.writeOwnedArray("actionflow_archivio_scadenze", deduplicated);
     }
 
     return deduplicated;
@@ -3255,13 +3386,14 @@ function salvaInArchivio(nuoveAzioni, nuoveScadenze) {
         testo: cleanedScadenze[s].testo,
         data: cleanedScadenze[s].data,
         dataRisolta: cleanedScadenze[s].dataRisolta || null,
-        aggiunta: timestamp
+        aggiunta: timestamp,
+        userId: window.ActionFlowAuth.getCurrentUserId()
       });
     }
   }
 
-  localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(dedupeTasks(archAzioni)));
-  localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(dedupeScadenze(archScadenze)));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_archivio_azioni", dedupeTasks(archAzioni));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_archivio_scadenze", dedupeScadenze(archScadenze));
 }
 
 
@@ -3281,23 +3413,169 @@ function raggruppaPerPriorita(azioni) {
 }
 
 function leggiAzioniCompletate() {
-  var raw = localStorage.getItem("actionflow_azioni_done");
-  if (!raw) return {};
-  try {
-    var dati = JSON.parse(raw);
-    if (!dati || typeof dati !== "object") return {};
-    return dati;
-  } catch (e) {
-    return {};
-  }
+  return window.ActionFlowAuth.readScopedObject("actionflow_azioni_done");
 }
 
 function salvaAzioniCompletate(completate) {
-  localStorage.setItem("actionflow_azioni_done", JSON.stringify(completate));
+  window.ActionFlowAuth.writeScopedObject("actionflow_azioni_done", completate);
 }
 
 function generaIdAzione(testo) {
   return "azione_" + testo.replace(/[^a-zA-Z0-9\u00C0-\u00FF]/g, "_").toLowerCase();
+}
+
+function userCanUseGoogleCalendar() {
+  var currentUser = window.ActionFlowAuth && typeof window.ActionFlowAuth.getCurrentUser === "function"
+    ? window.ActionFlowAuth.getCurrentUser()
+    : null;
+
+  return !!(currentUser && currentUser.provider === "google");
+}
+
+function buildCalendarEventPayloadFromTask(taskDisplay) {
+  if (!taskDisplay || !taskDisplay.testo || !taskDisplay.dataISO) {
+    return null;
+  }
+
+  var startTime = normalizzaOrario(taskDisplay.time) || "09:00";
+  var durationMinutes = normalizzaDurataStimata(taskDisplay.durataStimataMinuti) || 30;
+  var start = new Date(taskDisplay.dataISO + "T" + startTime + ":00");
+
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  var end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+  var description = "Creato da ActionFlow";
+
+  if (taskDisplay.prioritaDinamica || taskDisplay.priorita) {
+    description += "\nPriorita: " + (taskDisplay.prioritaDinamica || taskDisplay.priorita);
+  }
+
+  if (taskDisplay.scadenzaOriginale) {
+    description += "\nScadenza: " + taskDisplay.scadenzaOriginale;
+  }
+
+  return {
+    title: taskDisplay.testo,
+    description: description,
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
+}
+
+function buildAutoSyncCalendarPayloadFromTask(task) {
+  if (!task || !task.testo || !task.dataISO) {
+    return null;
+  }
+
+  var startTime = normalizzaOrario(task.time);
+  var durationMinutes = normalizzaDurataStimata(task.durataStimataMinuti);
+  if (!startTime || !durationMinutes) {
+    return null;
+  }
+
+  var start = new Date(task.dataISO + "T" + startTime + ":00");
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  var end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+  return {
+    title: task.testo,
+    description: "Creato automaticamente da ActionFlow",
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
+}
+
+async function syncTasksToGoogleCalendarIfNeeded(tasks) {
+  console.log("[Calendar] Tasks created", Array.isArray(tasks) ? tasks : []);
+  console.log("[Calendar] Auto-sync enabled:", isCalendarAutoSyncEnabled());
+
+  if (!isCalendarAutoSyncEnabled() || !userCanUseGoogleCalendar()) {
+    return;
+  }
+
+  var changed = false;
+
+  for (var i = 0; i < tasks.length; i++) {
+    var task = tasks[i];
+    console.log("[Calendar] Task scheduling fields", task ? {
+      testo: task.testo,
+      dataISO: task.dataISO,
+      time: task.time,
+      durataStimataMinuti: task.durataStimataMinuti,
+      syncedToCalendar: task.syncedToCalendar === true
+    } : null);
+
+    if (!task || task.syncedToCalendar === true) {
+      continue;
+    }
+
+    var payload = buildAutoSyncCalendarPayloadFromTask(task);
+    if (!payload) {
+      continue;
+    }
+
+    try {
+      console.log("[Calendar] Calling /calendar/events", payload);
+      var response = await fetch("/calendar/events", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      console.log("[Calendar] /calendar/events response", {
+        ok: response.ok,
+        status: response.status
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      task.syncedToCalendar = true;
+      changed = true;
+      console.log("[Calendar] Event created for task", task.testo);
+    } catch (e) {}
+  }
+
+  if (changed) {
+    window.ActionFlowAuth.writeOwnedArray("actionflow_checklist", tasks);
+  }
+}
+
+async function aggiungiTaskAGoogleCalendar(taskDisplay) {
+  var payload = buildCalendarEventPayloadFromTask(taskDisplay);
+  if (!payload) {
+    alert("Questa azione non ha ancora una data valida per creare un evento.");
+    return;
+  }
+
+  try {
+    var response = await fetch("/calendar/events", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    var data = await response.json().catch(function() { return {}; });
+
+    if (!response.ok) {
+      throw new Error(data.error || "Impossibile creare l'evento Google Calendar.");
+    }
+
+    alert("Evento aggiunto a Google Calendar.");
+  } catch (error) {
+    alert(error && error.message ? error.message : "Impossibile creare l'evento Google Calendar.");
+  }
 }
 
 // Riempie il contenitore azioni raggruppate per priorità
@@ -3382,6 +3660,19 @@ function riempiListaAzioni(idContenitore, elementi) {
       btnModifica.className = "btn-modifica";
       btnModifica.textContent = "Modifica";
 
+      var btnGoogleCalendar = null;
+      if (userCanUseGoogleCalendar() && buildCalendarEventPayloadFromTask(azioneDisplay)) {
+        btnGoogleCalendar = document.createElement("button");
+        btnGoogleCalendar.type = "button";
+        btnGoogleCalendar.className = "btn-modifica";
+        btnGoogleCalendar.textContent = "Aggiungi a Google Calendar";
+        (function(taskForCalendar) {
+          btnGoogleCalendar.addEventListener("click", function() {
+            aggiungiTaskAGoogleCalendar(taskForCalendar);
+          });
+        })(azioneDisplay);
+      }
+
       (function(liEl, az) {
         btnModifica.addEventListener("click", function() {
           attivaEditAzione(liEl, az, azioniCorrente, scadenzeCorrente, function() {
@@ -3394,6 +3685,7 @@ function riempiListaAzioni(idContenitore, elementi) {
 
       li.appendChild(checkbox);
       li.appendChild(contenuto);
+      if (btnGoogleCalendar) li.appendChild(btnGoogleCalendar);
       li.appendChild(btnModifica);
       ul.appendChild(li);
     }
@@ -3513,8 +3805,8 @@ function attivaEditAzione(li, azione, azioniArr, scadenzeArr, onSave) {
 function salvaDatiCorrente() {
   azioniCorrente = dedupeTasks(azioniCorrente);
   scadenzeCorrente = dedupeScadenze(scadenzeCorrente);
-  localStorage.setItem("actionflow_checklist", JSON.stringify(azioniCorrente));
-  localStorage.setItem("actionflow_scadenze", JSON.stringify(scadenzeCorrente));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_checklist", azioniCorrente);
+  window.ActionFlowAuth.writeOwnedArray("actionflow_scadenze", scadenzeCorrente);
   salvaInArchivio(azioniCorrente, scadenzeCorrente);
   refreshDailyPlanIfPresent();
 }
@@ -3670,29 +3962,465 @@ function eseguiResetProfilo() {
   }
 }
 
-function mostraProfilo() {
-  var barra = document.getElementById("barra-profilo");
-  var fallback = document.getElementById("home-greeting-fallback");
-  if (!barra) return;
+function avviaLoginGoogle() {
+  window.location.href = "/auth/google";
+}
 
-  var profilo = leggiProfilo();
-  if (!profilo) {
-    profilo = chiediNomeProfilo();
+function avviaLoginApple() {
+  window.location.href = "/auth/apple";
+}
+
+function getUiIconSvg(name) {
+  var icons = {
+    profile: '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" fill="currentColor"></path><path d="M4.75 19.25a7.25 7.25 0 0 1 14.5 0 .75.75 0 0 1-.75.75H5.5a.75.75 0 0 1-.75-.75Z" fill="currentColor"></path></svg>',
+    settings: '<svg viewBox="0 0 24 24" focusable="false"><path d="M9.5 3.75a.75.75 0 0 1 .73.58l.27 1.17a6.9 6.9 0 0 1 2.99 0l.27-1.17a.75.75 0 0 1 1.11-.48l1.6.92a.75.75 0 0 1 .33.92l-.43 1.12c.8.61 1.48 1.34 2 2.18l1.18-.2a.75.75 0 0 1 .84.58l.36 1.8a.75.75 0 0 1-.48.85l-1.12.42a6.94 6.94 0 0 1 0 2.98l1.12.42a.75.75 0 0 1 .48.85l-.36 1.8a.75.75 0 0 1-.84.58l-1.18-.2a6.89 6.89 0 0 1-2 2.18l.43 1.12a.75.75 0 0 1-.33.92l-1.6.92a.75.75 0 0 1-1.11-.48l-.27-1.17a6.9 6.9 0 0 1-2.99 0l-.27 1.17a.75.75 0 0 1-1.11.48l-1.6-.92a.75.75 0 0 1-.33-.92l.43-1.12a6.89 6.89 0 0 1-2-2.18l-1.18.2a.75.75 0 0 1-.84-.58l-.36-1.8a.75.75 0 0 1 .48-.85l1.12-.42a6.94 6.94 0 0 1 0-2.98l-1.12-.42a.75.75 0 0 1-.48-.85l.36-1.8a.75.75 0 0 1 .84-.58l1.18.2a6.89 6.89 0 0 1 2-2.18l-.43-1.12a.75.75 0 0 1 .33-.92l1.6-.92a.75.75 0 0 1 .37-.1ZM12 9.25A2.75 2.75 0 1 0 14.75 12 2.75 2.75 0 0 0 12 9.25Z" fill="currentColor"></path></svg>',
+    logout: '<svg viewBox="0 0 24 24" focusable="false"><path d="M10.75 4.75a.75.75 0 0 1 0 1.5h-3.5A1.25 1.25 0 0 0 6 7.5v9a1.25 1.25 0 0 0 1.25 1.25h3.5a.75.75 0 0 1 0 1.5h-3.5A2.75 2.75 0 0 1 4.5 16.5v-9a2.75 2.75 0 0 1 2.75-2.75h3.5Z" fill="currentColor"></path><path d="M14.72 7.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 1 1-1.06-1.06l2.97-2.97H9.5a.75.75 0 0 1 0-1.5h8.19l-2.97-2.97a.75.75 0 0 1 0-1.06Z" fill="currentColor"></path></svg>',
+    dashboard: '<svg viewBox="0 0 24 24" focusable="false"><path d="M5.5 4.5h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Zm8 0h5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Zm0 6.5h5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1Zm-8 2h5a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1Z" fill="currentColor"></path></svg>'
+  };
+
+  return icons[name] || "";
+}
+
+function buildIconLabel(iconName, label) {
+  return '<span class="ui-button-content"><span class="ui-icon" aria-hidden="true">' + getUiIconSvg(iconName) + '</span><span>' + label + '</span></span>';
+}
+
+var GUEST_USER_STORAGE_KEY = "actionflow_guest_user";
+var THEME_STORAGE_KEY = "actionflow_theme";
+var USER_SETTINGS_STORAGE_KEY = "actionflow_user_settings";
+var pendingSettingsImageDataUrl = "";
+
+function readGuestUser() {
+  try {
+    var raw = localStorage.getItem(GUEST_USER_STORAGE_KEY);
+    var parsed = raw ? JSON.parse(raw) : null;
+
+    if (!parsed || typeof parsed !== "object" || !parsed.name) {
+      return null;
+    }
+
+    return {
+      id: parsed.id || "guest-local",
+      provider: "guest",
+      providerUserId: parsed.id || "guest-local",
+      name: parsed.name,
+      email: null
+    };
+  } catch (e) {
+    return null;
   }
-  if (!profilo) {
-    barra.classList.add("nascosto");
-    if (fallback) fallback.classList.remove("nascosto");
+}
+
+function writeGuestUser(name) {
+  var normalizedName = typeof name === "string" ? name.trim() : "";
+  if (!normalizedName) return null;
+
+  var guestUser = {
+    id: "guest-local",
+    name: normalizedName
+  };
+
+  localStorage.setItem(GUEST_USER_STORAGE_KEY, JSON.stringify(guestUser));
+  return guestUser;
+}
+
+function clearGuestUser() {
+  localStorage.removeItem(GUEST_USER_STORAGE_KEY);
+}
+
+function getCurrentAppUser() {
+  var authUser = window.ActionFlowAuth && typeof window.ActionFlowAuth.getCurrentUser === "function"
+    ? window.ActionFlowAuth.getCurrentUser()
+    : null;
+
+  return authUser || readGuestUser();
+}
+
+function syncAuthVisibility() {
+  if (window.location.pathname !== "/") {
     return;
   }
 
-  barra.classList.remove("nascosto");
-  if (fallback) fallback.classList.add("nascosto");
+  if (readGuestUser()) {
+    return;
+  }
 
-  var avatar = barra.querySelector(".profilo-avatar");
-  var saluto = barra.querySelector(".profilo-saluto");
+  if (window.ActionFlowAuth && typeof window.ActionFlowAuth.isLoaded === "function" && !window.ActionFlowAuth.isLoaded()) {
+    return;
+  }
 
-  if (avatar) avatar.textContent = profilo.nome.charAt(0).toUpperCase();
-  if (saluto) saluto.textContent = "Ciao, " + profilo.nome;
+  if (!getCurrentAppUser()) {
+    window.location.replace("/login");
+  }
+}
+
+function getAccountDisplayLabel(user) {
+  if (user && user.name) return user.name;
+  if (user && user.email) return user.email;
+  return "A";
+}
+
+function getAccountImage(user) {
+  if (!user || typeof user !== "object") return "";
+  return user.picture || user.image || user.photoURL || "";
+}
+
+function getAuthUserIdentifier(user) {
+  if (!user) return "guest";
+  return user.id || user.email || "guest";
+}
+
+function getStoredThemePreference() {
+  try {
+    var theme = localStorage.getItem(THEME_STORAGE_KEY);
+    if (theme === "light" || theme === "dark" || theme === "system") {
+      return theme;
+    }
+  } catch (e) {}
+  return "system";
+}
+
+function getResolvedTheme(theme) {
+  if (theme === "light" || theme === "dark") {
+    return theme;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  var resolvedTheme = getResolvedTheme(theme || "system");
+  document.body.setAttribute("data-theme", resolvedTheme);
+}
+
+function saveThemePreference(theme) {
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+  applyTheme(theme);
+}
+
+function readStoredUserSettings() {
+  try {
+    var raw = localStorage.getItem(USER_SETTINGS_STORAGE_KEY);
+    var parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeStoredUserSettings(settings) {
+  localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(settings || {}));
+}
+
+function isCalendarAutoSyncEnabled() {
+  return readStoredUserSettings().calendarAutoSync === true;
+}
+
+function getEffectiveUserProfile(user) {
+  if (!user) return null;
+
+  var merged = Object.assign({}, user);
+  var storedSettings = readStoredUserSettings();
+
+  if (storedSettings.displayName) {
+    merged.displayName = storedSettings.displayName;
+  }
+
+  if (storedSettings.avatarUrl) {
+    merged.avatarUrl = storedSettings.avatarUrl;
+  }
+
+  if (storedSettings.theme) {
+    merged.theme = storedSettings.theme;
+  }
+
+  if (merged.displayName) {
+    merged.name = merged.displayName;
+  }
+
+  if (merged.avatarUrl) {
+    merged.picture = merged.avatarUrl;
+  }
+
+  return merged;
+}
+
+function applyAvatarContent(element, user, fallbackLabel) {
+  if (!element) return;
+
+  var imageUrl = getAccountImage(user);
+  if (imageUrl) {
+    element.textContent = fallbackLabel;
+    element.style.backgroundImage = 'url("' + imageUrl.replace(/"/g, '\\"') + '")';
+    element.classList.add("has-image");
+    element.classList.remove("is-icon");
+    return;
+  }
+
+  if (!user) {
+    element.innerHTML = getUiIconSvg("profile");
+    element.style.backgroundImage = "";
+    element.classList.remove("has-image");
+    element.classList.add("is-icon");
+    return;
+  }
+
+  element.textContent = fallbackLabel;
+  element.style.backgroundImage = "";
+  element.classList.remove("has-image");
+  element.classList.remove("is-icon");
+}
+
+function closeAccountMenu() {
+  var menu = document.getElementById("account-menu-panel");
+  var button = document.getElementById("account-menu-button");
+
+  if (menu) {
+    menu.classList.add("nascosto");
+    menu.setAttribute("aria-hidden", "true");
+  }
+
+  if (button) {
+    button.setAttribute("aria-expanded", "false");
+  }
+}
+
+function openAccountMenu() {
+  var menu = document.getElementById("account-menu-panel");
+  var button = document.getElementById("account-menu-button");
+
+  if (menu) {
+    menu.classList.remove("nascosto");
+    menu.setAttribute("aria-hidden", "false");
+  }
+
+  if (button) {
+    button.setAttribute("aria-expanded", "true");
+  }
+}
+
+function toggleAccountMenu() {
+  var menu = document.getElementById("account-menu-panel");
+  if (!menu) return;
+
+  if (menu.classList.contains("nascosto")) {
+    openAccountMenu();
+  } else {
+    closeAccountMenu();
+  }
+}
+
+async function eseguiLogoutAuth() {
+  var authUser = window.ActionFlowAuth && typeof window.ActionFlowAuth.getCurrentUser === "function"
+    ? window.ActionFlowAuth.getCurrentUser()
+    : null;
+
+  if (!authUser && readGuestUser()) {
+    clearGuestUser();
+    mostraProfilo();
+    syncAuthVisibility();
+    closeAccountMenu();
+    return;
+  }
+
+  try {
+    await fetch("/auth/logout", {
+      method: "POST",
+      credentials: "same-origin"
+    });
+  } catch (e) {}
+
+  if (window.ActionFlowAuth && typeof window.ActionFlowAuth.loadCurrentUser === "function") {
+    await window.ActionFlowAuth.loadCurrentUser();
+  } else {
+    mostraProfilo();
+  }
+
+  closeAccountMenu();
+}
+
+function openSettingsModal() {
+  var modal = document.getElementById("modal-settings");
+  var authUser = getCurrentAppUser();
+  var effectiveUser = getEffectiveUserProfile(authUser);
+  var nameInput = document.getElementById("settings-name-input");
+  var imageUrlInput = document.getElementById("settings-image-url-input");
+  var fileInput = document.getElementById("settings-image-file-input");
+  var themeSelect = document.getElementById("settings-theme-select");
+  var calendarAutoSyncInput = document.getElementById("settings-calendar-autosync-input");
+
+  if (!modal || !effectiveUser) return;
+
+  pendingSettingsImageDataUrl = "";
+  if (nameInput) nameInput.value = effectiveUser.name || "";
+  if (imageUrlInput) imageUrlInput.value = getAccountImage(effectiveUser) || "";
+  if (fileInput) fileInput.value = "";
+  if (themeSelect) themeSelect.value = effectiveUser.theme || getStoredThemePreference();
+  if (calendarAutoSyncInput) calendarAutoSyncInput.checked = isCalendarAutoSyncEnabled();
+
+  modal.classList.remove("nascosto");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeSettingsModal() {
+  var modal = document.getElementById("modal-settings");
+  if (!modal) return;
+
+  modal.classList.add("nascosto");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function openFocusModal() {
+  var modal = document.getElementById("modal-focus");
+  if (!modal) return;
+
+  renderFocus(loadDailyPlan());
+  inizializzaFocusPage();
+  modal.classList.remove("nascosto");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeFocusModal() {
+  var modal = document.getElementById("modal-focus");
+  if (!modal) return;
+
+  modal.classList.add("nascosto");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+async function saveSettingsModal() {
+  var authUser = getCurrentAppUser();
+  var nameInput = document.getElementById("settings-name-input");
+  var imageUrlInput = document.getElementById("settings-image-url-input");
+  var themeSelect = document.getElementById("settings-theme-select");
+  var calendarAutoSyncInput = document.getElementById("settings-calendar-autosync-input");
+
+  if (!authUser) return;
+
+  var profileImage = pendingSettingsImageDataUrl || (imageUrlInput ? imageUrlInput.value.trim() : "") || "";
+  var selectedTheme = themeSelect ? themeSelect.value : "system";
+  var calendarAutoSync = !!(calendarAutoSyncInput && calendarAutoSyncInput.checked);
+  var settingsPayload = {
+    displayName: nameInput ? nameInput.value.trim() : "",
+    avatarUrl: profileImage,
+    theme: selectedTheme
+  };
+  var storedSettings = Object.assign({}, readStoredUserSettings(), {
+    displayName: settingsPayload.displayName,
+    calendarAutoSync: calendarAutoSync
+  });
+
+  writeStoredUserSettings(storedSettings);
+
+  if (authUser && authUser.provider === "guest") {
+    writeGuestUser(settingsPayload.displayName || authUser.name || "Ospite");
+    saveThemePreference(selectedTheme);
+    mostraProfilo();
+    closeSettingsModal();
+    return;
+  }
+
+  try {
+    var response = await fetch("/auth/settings", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(settingsPayload)
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        writeStoredUserSettings(settingsPayload);
+      } else {
+        throw new Error("Impossibile salvare le impostazioni.");
+      }
+    } else if (window.ActionFlowAuth && typeof window.ActionFlowAuth.loadCurrentUser === "function") {
+      await window.ActionFlowAuth.loadCurrentUser();
+    }
+
+    saveThemePreference(selectedTheme);
+  } catch (e) {
+    writeStoredUserSettings(settingsPayload);
+    saveThemePreference(selectedTheme);
+    mostraProfilo();
+    closeSettingsModal();
+    return;
+  }
+
+  if (!response || response.status === 404) {
+    saveThemePreference(selectedTheme);
+  }
+
+  mostraProfilo();
+  closeSettingsModal();
+}
+
+function renderAccountMenu(user) {
+  var greetingText = document.getElementById("home-greeting-text");
+  var statusLabel = document.getElementById("account-status-label");
+  var buttonAvatar = document.getElementById("account-menu-avatar");
+  var userInfo = document.getElementById("account-user-info");
+  var actions = document.getElementById("account-menu-actions");
+  if (!statusLabel) return;
+  var effectiveUser = getEffectiveUserProfile(user);
+
+  if (effectiveUser) {
+    var authLabel = effectiveUser.name || effectiveUser.email || "Utente";
+    var authInitial = authLabel.charAt(0).toUpperCase();
+
+    if (greetingText) greetingText.textContent = "Ciao " + authLabel + ", cosa vuoi fare oggi?";
+    statusLabel.textContent = "Connesso";
+    applyAvatarContent(buttonAvatar, effectiveUser, authInitial);
+    if (userInfo) {
+      userInfo.classList.remove("nascosto");
+      userInfo.innerHTML =
+        '<div id="account-user-avatar" class="profilo-avatar account-user-avatar">' + authInitial + '</div>' +
+        '<div class="account-user-copy">' +
+        '<strong id="account-user-name" class="account-user-name"></strong>' +
+        '<span id="account-user-email" class="account-user-email"></span>' +
+        "</div>";
+
+      applyAvatarContent(document.getElementById("account-user-avatar"), effectiveUser, authInitial);
+      document.getElementById("account-user-name").textContent = effectiveUser.name || "Utente";
+      document.getElementById("account-user-email").textContent = effectiveUser.email || (effectiveUser.provider === "guest" ? "Modalità ospite" : "Account collegato");
+    }
+    if (actions) {
+      actions.innerHTML =
+        '<button type="button" id="btn-account-settings" class="profilo-btn">' + buildIconLabel("settings", "Impostazioni") + '</button>' +
+        '<button type="button" id="btn-account-logout" class="profilo-btn profilo-btn-reset">' + buildIconLabel("logout", "Esci") + '</button>';
+    }
+    return;
+  }
+
+  if (greetingText) greetingText.textContent = "Ciao, cosa vuoi fare oggi?";
+  statusLabel.textContent = "Non connesso";
+  applyAvatarContent(buttonAvatar, null, getAccountDisplayLabel(null));
+  if (userInfo) {
+    userInfo.classList.add("nascosto");
+    userInfo.innerHTML =
+      '<div id="account-user-avatar" class="profilo-avatar account-user-avatar">A</div>' +
+      '<div class="account-user-copy">' +
+      '<strong id="account-user-name" class="account-user-name"></strong>' +
+      '<span id="account-user-email" class="account-user-email"></span>' +
+      "</div>";
+  }
+  if (actions) {
+    actions.innerHTML =
+      '<button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>' +
+      '<button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Continua con Apple</button>' +
+      '<div id="account-provider-placeholders" class="auth-placeholder-group" aria-label="Provider futuri">' +
+      '<button type="button" class="auth-btn auth-btn-secondary" disabled aria-disabled="true">Email presto</button>' +
+      "</div>";
+  }
+}
+
+function mostraProfilo() {
+  var authUser = getCurrentAppUser();
+
+  renderAccountMenu(authUser);
+  syncAuthVisibility();
 }
 
 function inizializzaFocusPage() {
@@ -3714,15 +4442,114 @@ function inizializzaFocusPage() {
 
 // Collega il bottone checklist anche via JS (fallback robusto)
 document.addEventListener("DOMContentLoaded", function() {
+  applyTheme(getStoredThemePreference());
   mostraProfilo();
   setupDailyPlanModal();
   setupAnalysisPreviewModal();
 
-  var btnModifica = document.getElementById("btn-modifica-profilo");
-  if (btnModifica) btnModifica.addEventListener("click", modificaNomeProfilo);
+  var accountButton = document.getElementById("account-menu-button");
+  if (accountButton) accountButton.addEventListener("click", function(event) {
+    event.stopPropagation();
+    toggleAccountMenu();
+  });
 
-  var btnReset = document.getElementById("btn-reset-profilo");
-  if (btnReset) btnReset.addEventListener("click", eseguiResetProfilo);
+  var accountPanel = document.getElementById("account-menu-panel");
+  if (accountPanel) accountPanel.addEventListener("click", function(event) {
+    event.stopPropagation();
+
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    var buttonTarget = target.closest("button");
+    if (!(buttonTarget instanceof Element)) return;
+
+    if (buttonTarget.id === "btn-account-login-google") {
+      avviaLoginGoogle();
+      return;
+    }
+
+    if (buttonTarget.id === "btn-account-login-apple") {
+      avviaLoginApple();
+      return;
+    }
+
+    if (buttonTarget.id === "btn-account-settings") {
+      closeAccountMenu();
+      openSettingsModal();
+      return;
+    }
+
+    if (buttonTarget.id === "btn-account-logout") {
+      eseguiLogoutAuth();
+    }
+  });
+
+  var btnOpenFocusModal = document.getElementById("btn-open-focus-modal");
+  if (btnOpenFocusModal) btnOpenFocusModal.addEventListener("click", openFocusModal);
+
+  var settingsModal = document.getElementById("modal-settings");
+  if (settingsModal) settingsModal.addEventListener("click", function(event) {
+    if (event.target === settingsModal) {
+      closeSettingsModal();
+    }
+  });
+
+  var focusModal = document.getElementById("modal-focus");
+  if (focusModal) focusModal.addEventListener("click", function(event) {
+    if (event.target === focusModal) {
+      closeFocusModal();
+    }
+  });
+
+  var btnCloseSettings = document.getElementById("btn-close-settings");
+  if (btnCloseSettings) btnCloseSettings.addEventListener("click", closeSettingsModal);
+
+  var btnCloseFocus = document.getElementById("btn-close-focus");
+  if (btnCloseFocus) btnCloseFocus.addEventListener("click", closeFocusModal);
+
+  var btnSaveSettings = document.getElementById("btn-save-settings");
+  if (btnSaveSettings) btnSaveSettings.addEventListener("click", saveSettingsModal);
+
+  var fileInput = document.getElementById("settings-image-file-input");
+  if (fileInput) fileInput.addEventListener("change", function(event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) {
+      pendingSettingsImageDataUrl = "";
+      return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function(loadEvent) {
+      pendingSettingsImageDataUrl = typeof loadEvent.target.result === "string" ? loadEvent.target.result : "";
+    };
+    reader.readAsDataURL(file);
+  });
+
+  var systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+  if (systemThemeMedia && typeof systemThemeMedia.addEventListener === "function") {
+    systemThemeMedia.addEventListener("change", function() {
+      if (getStoredThemePreference() === "system") {
+        applyTheme("system");
+      }
+    });
+  } else if (systemThemeMedia && typeof systemThemeMedia.addListener === "function") {
+    systemThemeMedia.addListener(function() {
+      if (getStoredThemePreference() === "system") {
+        applyTheme("system");
+      }
+    });
+  }
+
+  document.addEventListener("click", function() {
+    closeAccountMenu();
+  });
+
+  document.addEventListener("keydown", function(event) {
+    if (event.key === "Escape") {
+      closeAccountMenu();
+      closeSettingsModal();
+      closeFocusModal();
+    }
+  });
 
   var bottoneChecklist = document.getElementById("bottone-checklist");
   if (bottoneChecklist) {
@@ -3736,6 +4563,21 @@ document.addEventListener("DOMContentLoaded", function() {
     bottoneEsporta.addEventListener("click", esportaEventiCalendario);
   }
 
-  renderDailyPlan(loadDailyPlan(), false);
+  var btnRigeneraPiano = document.getElementById("btn-rigenera-piano");
+  if (btnRigeneraPiano) {
+    btnRigeneraPiano.addEventListener("click", organizeDay);
+  }
+
+  ensureDailyPlanForCurrentTasks(isDailyPlanPage());
+  inizializzaFocusPage();
+});
+
+window.addEventListener("actionflow-auth-ready", function() {
+  if (window.ActionFlowAuth && typeof window.ActionFlowAuth.getCurrentUser === "function" && window.ActionFlowAuth.getCurrentUser()) {
+    clearGuestUser();
+  }
+
+  mostraProfilo();
+  ensureDailyPlanForCurrentTasks(isDailyPlanPage());
   inizializzaFocusPage();
 });

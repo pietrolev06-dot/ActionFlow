@@ -11,55 +11,100 @@
   <div class="container home-shell">
 
     <header class="home-header">
-      <div class="home-brand-row">
-        <span class="home-brand-label">Assistente personale</span>
-        <h1>Action<span class="brand-accent">Flow</span></h1>
-      </div>
+      <div class="home-topbar">
+        <div class="home-brand-row">
+          <h1>Action<span class="brand-accent">Flow</span></h1>
+          <p id="home-greeting-text" class="home-title-greeting">Ciao, cosa vuoi fare oggi?</p>
+        </div>
 
-      <div id="barra-profilo" class="barra-profilo home-greeting nascosto">
-        <div class="profilo-info">
-          <span class="profilo-avatar"></span>
-          <div class="home-greeting-copy">
-            <span class="profilo-saluto"></span>
-            <p class="home-question">Cosa vuoi fare oggi?</p>
+        <div class="home-topbar-actions">
+          <button id="bottone-dashboard" class="home-topbar-link" type="button" onclick="window.location.href='dashboard.html'">
+            <span class="ui-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M5.5 4.5h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Zm8 0h5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Zm0 6.5h5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1Zm-8 2h5a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1Z" fill="currentColor"></path>
+              </svg>
+            </span>
+            <span>Attività</span>
+          </button>
+
+          <div class="account-menu-shell">
+            <button
+              type="button"
+              id="account-menu-button"
+              class="account-menu-button"
+              aria-label="Apri menu account"
+              aria-expanded="false"
+              aria-controls="account-menu-panel"
+            >
+              <span id="account-menu-avatar" class="account-menu-avatar" aria-hidden="true"></span>
+            </button>
+
+            <div id="account-menu-panel" class="account-menu-panel nascosto" aria-hidden="true">
+              <div class="account-menu-header">
+                <span id="account-status-label" class="account-status-label">Non connesso</span>
+              </div>
+
+              <div id="account-user-info" class="account-user-info nascosto">
+                <div id="account-user-avatar" class="profilo-avatar account-user-avatar">A</div>
+                <div class="account-user-copy">
+                  <strong id="account-user-name" class="account-user-name"></strong>
+                  <span id="account-user-email" class="account-user-email"></span>
+                </div>
+              </div>
+
+              <div id="account-menu-actions" class="account-menu-actions">
+                <button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>
+                <button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Continua con Apple</button>
+                <button type="button" id="btn-account-settings" class="profilo-btn nascosto">Impostazioni</button>
+                <button type="button" id="btn-account-logout" class="profilo-btn profilo-btn-reset nascosto">Esci</button>
+                <div id="account-provider-placeholders" class="auth-placeholder-group" aria-label="Provider futuri">
+                  <button type="button" class="auth-btn auth-btn-secondary" disabled aria-disabled="true">Email presto</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="profilo-azioni">
-          <button type="button" id="btn-modifica-profilo" class="profilo-btn">Modifica</button>
-          <button type="button" id="btn-reset-profilo" class="profilo-btn profilo-btn-reset">Reset</button>
-        </div>
       </div>
 
-      <div id="home-greeting-fallback" class="home-greeting home-greeting-fallback">
-        <p class="home-saluto">ActionFlow</p>
-        <p class="home-question">Cosa vuoi fare oggi?</p>
-      </div>
     </header>
 
     <main class="home-main">
-      <section class="composer-card">
-        <div class="voice-input-wrap composer-input-wrap">
+      <section class="composer-card home-composer-card">
+        <div class="voice-input-wrap composer-input-wrap home-input-wrap">
           <textarea id="testo-input" placeholder="Scrivi qui quello che devi fare, oppure parla. Esempio: domani devo chiamare Marco"></textarea>
-          <button id="bottone-microfono" class="voice-button" type="button" onclick="startVoiceInput()" aria-label="Avvia input vocale" title="Input vocale">🎙️</button>
+          <button id="bottone-microfono" class="voice-button" type="button" onclick="startVoiceInput()" aria-label="Avvia input vocale" title="Input vocale">
+            <span class="ui-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 15.5a3.5 3.5 0 0 0 3.5-3.5V7a3.5 3.5 0 1 0-7 0v5a3.5 3.5 0 0 0 3.5 3.5Z" fill="currentColor"></path>
+                <path d="M6 11.5a.75.75 0 0 1 .75.75 5.25 5.25 0 0 0 10.5 0 .75.75 0 0 1 1.5 0 6.76 6.76 0 0 1-6 6.71V21a.75.75 0 0 1-1.5 0v-2.04a6.76 6.76 0 0 1-6-6.71.75.75 0 0 1 .75-.75Z" fill="currentColor"></path>
+              </svg>
+            </span>
+          </button>
         </div>
+
+        <p class="composer-helper">Scrivi o parla in modo naturale.</p>
 
         <div id="messaggio-errore" class="errore nascosto">
           Scrivi qualcosa nel campo di testo prima di continuare.
         </div>
 
-        <button id="bottone-analizza" class="home-primary-action" onclick="analizzaTesto()">Analizza</button>
-        <p class="composer-helper">Scrivi o parla in modo naturale. Es: domani devo chiamare Marco</p>
-      </section>
+        <button id="bottone-analizza" class="home-secondary-action home-analyze-button" onclick="analizzaTesto()">Analizza testo</button>
 
-      <section class="home-cta-section">
-        <button id="bottone-organizza-giornata" class="button-organize-day button-organize-day-primary" type="button" onclick="organizeDay()">Organizza giornata</button>
+        <div class="home-primary-actions">
+          <button id="bottone-organizza-giornata" class="button-organize-day button-organize-day-primary home-action-button home-organize-button" type="button" onclick="organizeDay()">Organizza giornata</button>
+          <button id="btn-open-focus-modal" class="home-focus-shortcut home-action-button" type="button" aria-label="Apri Focus">
+            <span class="ui-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M13.2 2.8a.75.75 0 0 1 .68 1.06L11.3 9.5h4.06a.75.75 0 0 1 .58 1.22l-6.5 8a.75.75 0 0 1-1.31-.68l1.86-5.54H6.64a.75.75 0 0 1-.67-1.1l5.5-8a.75.75 0 0 1 .73-.32Z" fill="currentColor"></path>
+              </svg>
+            </span>
+            <span>Focus</span>
+          </button>
+        </div>
       </section>
 
       <nav class="home-nav" aria-label="Navigazione principale">
-        <a class="home-nav-link" href="focus.html">Focus</a>
-        <a class="home-nav-link" href="dashboard.html">Dashboard</a>
         <button id="bottone-checklist" class="home-nav-link home-nav-button nascosto" type="button" onclick="window.location.href='checklist.html'">Checklist</button>
-        <button id="bottone-dashboard" class="nascosto" type="button" onclick="window.location.href='dashboard.html'">Apri dashboard</button>
       </nav>
     </main>
 
@@ -69,50 +114,17 @@
         <div id="contenitore-azioni"></div>
       </div>
 
+      <div id="box-da-pianificare" class="sezione blu home-results-card" style="display: none;">
+        <h2>Da pianificare</h2>
+        <ul id="lista-da-pianificare"></ul>
+      </div>
+
       <div id="box-scadenze" class="sezione arancio home-results-card">
         <h2>Scadenze</h2>
         <ul id="lista-scadenze"></ul>
         <button id="bottone-esporta-eventi" type="button">Esporta eventi</button>
       </div>
     </section>
-  </div>
-
-  <div id="modal-organizza-giornata" class="modal-overlay nascosto" aria-hidden="true">
-    <div class="modal-shell modal-piano-giornaliero" role="dialog" aria-modal="true" aria-labelledby="titolo-piano-giornaliero">
-      <div id="sezione-piano-giornaliero" class="sezione blu sezione-piano-giornaliero modal-section">
-        <div class="piano-giornaliero-header modal-header">
-          <div>
-            <h2 id="titolo-piano-giornaliero">Piano di oggi</h2>
-            <p id="piano-giornaliero-sommario" class="piano-giornaliero-sommario"></p>
-          </div>
-          <button id="bottone-chiudi-piano" class="modal-close-button" type="button" aria-label="Chiudi piano">Chiudi</button>
-        </div>
-
-        <p id="piano-giornaliero-vuoto" class="piano-giornaliero-vuoto nascosto">Nessun task attivo disponibile per organizzare la giornata.</p>
-
-        <div id="piano-giornaliero-grid" class="piano-giornaliero-grid piano-giornaliero-grid-modal">
-          <div id="blocco-mattina" class="piano-blocco piano-blocco-mattina nascosto">
-            <h3>Mattina</h3>
-            <ul id="lista-mattina"></ul>
-          </div>
-
-          <div id="blocco-pomeriggio" class="piano-blocco piano-blocco-pomeriggio nascosto">
-            <h3>Pomeriggio</h3>
-            <ul id="lista-pomeriggio"></ul>
-          </div>
-
-          <div id="blocco-resta-da-fare-oggi" class="piano-blocco piano-blocco-resta-oggi nascosto">
-            <h3>Resta da fare oggi</h3>
-            <ul id="lista-resta-da-fare-oggi"></ul>
-          </div>
-
-          <div id="blocco-se-avanza-tempo" class="piano-blocco piano-blocco-extra nascosto">
-            <h3>Se avanza tempo</h3>
-            <ul id="lista-se-avanza-tempo"></ul>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div id="modal-anteprima-analisi" class="modal-overlay nascosto" aria-hidden="true">
@@ -137,6 +149,111 @@
     </div>
   </div>
 
+  <div id="modal-settings" class="modal-overlay nascosto" aria-hidden="true">
+    <div class="modal-shell modal-settings-shell" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+      <div class="sezione blu modal-section settings-modal-section">
+        <div class="modal-header">
+          <div>
+            <h2 id="settings-modal-title">Impostazioni</h2>
+            <p class="page-subtitle">Aggiorna il nome visualizzato e l'immagine profilo solo in locale.</p>
+          </div>
+          <button id="btn-close-settings" class="modal-close-button" type="button" aria-label="Chiudi impostazioni">Chiudi</button>
+        </div>
+
+        <div class="settings-form">
+          <label class="settings-field">
+            <span>Nome</span>
+            <input id="settings-name-input" class="edit-input edit-input-testo" type="text" autocomplete="name" />
+          </label>
+
+          <label class="settings-field">
+            <span>Immagine profilo (URL)</span>
+            <input id="settings-image-url-input" class="edit-input edit-input-testo" type="url" placeholder="https://..." />
+          </label>
+
+          <label class="settings-field">
+            <span>Immagine profilo (file)</span>
+            <input id="settings-image-file-input" class="edit-input" type="file" accept="image/*" />
+          </label>
+
+          <label class="settings-field">
+            <span>Tema</span>
+            <select id="settings-theme-select" class="edit-select">
+              <option value="system">Sistema</option>
+              <option value="light">Chiaro</option>
+              <option value="dark">Scuro</option>
+            </select>
+          </label>
+
+          <label class="settings-field">
+            <span>
+              <input id="settings-calendar-autosync-input" type="checkbox" />
+              Sincronizza automaticamente con Google Calendar
+            </span>
+            <small>I task con data, orario e durata verranno aggiunti automaticamente al calendario.</small>
+          </label>
+
+          <div class="settings-actions">
+            <button id="btn-save-settings" class="home-primary-action settings-save-button" type="button">Salva</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-focus" class="modal-overlay nascosto" aria-hidden="true">
+    <div class="modal-shell modal-focus-shell" role="dialog" aria-modal="true" aria-labelledby="focus-modal-title">
+      <div class="sezione modal-section focus-modal-section">
+        <div class="modal-header focus-modal-header">
+          <div>
+            <p class="page-kicker">Focus</p>
+            <h2 id="focus-modal-title">Adesso</h2>
+            <p id="focus-sommario" class="page-subtitle focus-modal-summary">Solo il prossimo passo utile.</p>
+          </div>
+          <button id="btn-close-focus" class="modal-close-button" type="button" aria-label="Chiudi Focus">Chiudi</button>
+        </div>
+
+        <section id="sezione-focus" class="focus-section focus-page-section nascosto">
+          <div class="focus-now-shell">
+            <div id="focus-blocco-ora" class="focus-blocco focus-blocco-ora nascosto">
+              <h3>Adesso</h3>
+              <ul id="focus-lista-ora"></ul>
+            </div>
+          </div>
+
+          <section class="focus-next-shell" aria-labelledby="focus-next-title">
+            <div class="focus-next-header">
+              <h2 id="focus-next-title">Subito dopo</h2>
+            </div>
+
+            <div class="focus-next-list">
+              <div id="focus-blocco-dopo" class="focus-blocco focus-blocco-dopo nascosto">
+                <h3>Subito dopo</h3>
+                <ul id="focus-lista-dopo"></ul>
+              </div>
+
+              <div id="focus-blocco-piu-tardi" class="focus-blocco focus-blocco-piu-tardi nascosto">
+                <h3>Più tardi oggi</h3>
+                <ul id="focus-lista-piu-tardi"></ul>
+              </div>
+
+              <div id="focus-blocco-extra" class="focus-blocco focus-blocco-extra nascosto">
+                <h3>Se avanza tempo</h3>
+                <ul id="focus-lista-extra"></ul>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="focus-empty-state" class="sezione focus-empty-state nascosto">
+          <h2>Nessun task in evidenza</h2>
+          <p class="page-subtitle">Organizza la giornata per vedere qui il prossimo passo utile.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="authClient.js"></script>
   <script src="script.js"></script>
 
 </body>

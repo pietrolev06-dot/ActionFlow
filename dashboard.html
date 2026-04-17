@@ -19,7 +19,16 @@
 
       <div class="dashboard-page-actions">
         <a class="page-back-link" href="index.html">Torna alla home</a>
-        <button type="button" id="bottone-svuota-dashboard">Svuota tutti i task</button>
+        <button type="button" id="bottone-svuota-dashboard">
+          <span class="ui-button-content">
+            <span class="ui-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M9.25 4.5a1 1 0 0 1 .95-.68h3.6a1 1 0 0 1 .95.68l.25.75H18.5a.75.75 0 0 1 0 1.5h-.64l-.72 11.03A2.25 2.25 0 0 1 14.89 20H9.11a2.25 2.25 0 0 1-2.25-2.22L6.14 6.75H5.5a.75.75 0 0 1 0-1.5H9l.25-.75Zm-1 2.25.71 10.93a.75.75 0 0 0 .75.72h5.78a.75.75 0 0 0 .75-.72l.71-10.93h-8.7Zm2.49 2.25a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Zm3.5 0a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Z" fill="currentColor"></path>
+              </svg>
+            </span>
+            <span>Svuota tutti i task</span>
+          </span>
+        </button>
       </div>
     </header>
 
@@ -70,6 +79,7 @@
               <span>Solo con scadenza</span>
             </label>
           </div>
+
         </div>
       </details>
     </section>
@@ -78,8 +88,8 @@
       <section class="sezione verde dashboard-main-card" id="box-dashboard-azioni" aria-labelledby="dashboard-task-heading">
         <div class="dashboard-section-header">
           <div>
-            <h2 id="dashboard-task-heading">Task</h2>
-            <p class="dashboard-section-copy">Vista compatta. Tocca un task per aprire i dettagli e modificarlo.</p>
+            <h2 id="dashboard-task-heading">Tutti i task</h2>
+            <p class="dashboard-section-copy">Vista completa. Tocca un task per aprire i dettagli e modificarlo.</p>
           </div>
         </div>
 
@@ -87,21 +97,36 @@
         <p id="dashboard-azioni-vuote" class="sottotitolo nascosto">Nessun task disponibile.</p>
       </section>
 
-      <aside class="sezione arancio dashboard-side-card" id="box-dashboard-scadenze" aria-labelledby="dashboard-scadenze-heading">
-        <div class="dashboard-section-header">
-          <div>
-            <h2 id="dashboard-scadenze-heading">Scadenze</h2>
-            <p class="dashboard-section-copy">Date salvate, in ordine, senza elementi superflui.</p>
+      <div class="dashboard-side-column">
+        <aside class="sezione arancio dashboard-side-card" id="box-dashboard-scadenze" aria-labelledby="dashboard-scadenze-heading">
+          <div class="dashboard-section-header">
+            <div>
+              <h2 id="dashboard-scadenze-heading">Scadenze</h2>
+              <p class="dashboard-section-copy">Solo i task con una data precisa.</p>
+            </div>
           </div>
-        </div>
 
-        <div id="contenitore-dashboard-scadenze"></div>
-        <p id="dashboard-scadenze-vuote" class="sottotitolo nascosto">Nessuna scadenza archiviata.</p>
-      </aside>
+          <div id="contenitore-dashboard-scadenze" class="dashboard-task-list"></div>
+          <p id="dashboard-scadenze-vuote" class="sottotitolo nascosto">Nessuna scadenza archiviata.</p>
+        </aside>
+
+        <aside class="sezione blu dashboard-side-card" id="box-dashboard-riprogrammare" aria-labelledby="dashboard-riprogrammare-heading">
+          <div class="dashboard-section-header">
+            <div>
+              <h2 id="dashboard-riprogrammare-heading">Da riprogrammare</h2>
+              <p class="dashboard-section-copy">Task flessibili da riportare in agenda.</p>
+            </div>
+          </div>
+
+          <div id="contenitore-dashboard-riprogrammare" class="dashboard-task-list"></div>
+          <p id="dashboard-riprogrammare-vuote" class="sottotitolo nascosto">Nessun task da riprogrammare.</p>
+        </aside>
+      </div>
     </main>
 
   </div>
 
+  <script src="authClient.js"></script>
   <script src="dashboard.js"></script>
 
 </body>

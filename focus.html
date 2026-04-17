@@ -10,51 +10,53 @@
   <div class="container focus-page-shell">
     <header class="page-header">
       <div>
-        <p class="page-kicker">Assistente personale</p>
-        <h1 class="page-title">Focus</h1>
-        <p class="page-subtitle">Solo quello che conta adesso.</p>
+        <p class="page-kicker">ActionFlow</p>
+        <h1 class="page-title">Adesso</h1>
+        <p id="focus-sommario" class="page-subtitle focus-page-subtitle">Solo quello che conta adesso.</p>
       </div>
       <a class="page-back-link" href="index.html">Torna alla home</a>
     </header>
 
-    <section id="sezione-focus" class="sezione focus-section focus-page-section nascosto">
-      <div class="focus-header">
-        <div>
-          <h2>Cosa fare ora</h2>
-          <p id="focus-sommario" class="focus-sommario"></p>
-        </div>
-      </div>
-
-      <div class="focus-grid focus-grid-page">
+    <section id="sezione-focus" class="focus-section focus-page-section nascosto">
+      <div class="focus-now-shell">
         <div id="focus-blocco-ora" class="focus-blocco focus-blocco-ora nascosto">
-          <h3>ORA</h3>
+          <h3>Adesso</h3>
           <ul id="focus-lista-ora"></ul>
         </div>
-
-        <div id="focus-blocco-dopo" class="focus-blocco focus-blocco-dopo nascosto">
-          <h3>DOPO</h3>
-          <ul id="focus-lista-dopo"></ul>
-        </div>
-
-        <div id="focus-blocco-piu-tardi" class="focus-blocco focus-blocco-piu-tardi nascosto">
-          <h3>PIÙ TARDI OGGI</h3>
-          <ul id="focus-lista-piu-tardi"></ul>
-        </div>
-
-        <div id="focus-blocco-extra" class="focus-blocco focus-blocco-extra nascosto">
-          <h3>SE AVANZA TEMPO</h3>
-          <ul id="focus-lista-extra"></ul>
-        </div>
       </div>
+
+      <section class="focus-next-shell" aria-labelledby="focus-next-title">
+        <div class="focus-next-header">
+          <h2 id="focus-next-title">Prossimi task</h2>
+        </div>
+
+        <div class="focus-next-list">
+          <div id="focus-blocco-dopo" class="focus-blocco focus-blocco-dopo nascosto">
+            <h3>Subito dopo</h3>
+            <ul id="focus-lista-dopo"></ul>
+          </div>
+
+          <div id="focus-blocco-piu-tardi" class="focus-blocco focus-blocco-piu-tardi nascosto">
+            <h3>Più tardi</h3>
+            <ul id="focus-lista-piu-tardi"></ul>
+          </div>
+
+          <div id="focus-blocco-extra" class="focus-blocco focus-blocco-extra nascosto">
+            <h3>Se avanza tempo</h3>
+            <ul id="focus-lista-extra"></ul>
+          </div>
+        </div>
+      </section>
     </section>
 
     <section id="focus-empty-state" class="sezione focus-empty-state nascosto">
-      <h2>Nessun piano disponibile</h2>
-      <p class="page-subtitle">Organizza la giornata dalla home per vedere qui i task prioritari.</p>
+      <h2>Nothing to do right now</h2>
+      <p class="page-subtitle">Organizza la giornata dalla home per vedere qui il prossimo task.</p>
       <a class="page-back-link page-back-link-primary" href="index.html">Vai alla home</a>
     </section>
   </div>
 
+  <script src="authClient.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

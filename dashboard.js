@@ -26,6 +26,7 @@ function normalizzaAzioneDashboard(azione) {
   var rawTime = azione.time ? String(azione.time).trim() : null;
 
   return {
+    id: azione.id || generaIdAzione(azione.testo),
     testo: String(azione.testo).trim(),
     priorita: azione.priorita || "bassa",
     scadenzaOriginale: azione.scadenzaOriginale || null,
@@ -35,7 +36,8 @@ function normalizzaAzioneDashboard(azione) {
     energiaStimata: normalizzaEnergiaStimata(azione.energiaStimata),
     aggiunta: azione.aggiunta || null,
     completato: azione.completato === true,
-    completedAt: azione.completedAt || null
+    completedAt: azione.completedAt || null,
+    userId: azione.userId || null
   };
 }
 
@@ -55,6 +57,7 @@ function mergeTaskRecord(existing, incoming) {
   var next = normalizzaAzioneDashboard(incoming) || {};
   if (!base) return null;
 
+  if (next.id && !base.id) base.id = next.id;
   if (livelloPriorita(next.priorita || "bassa") > livelloPriorita(base.priorita || "bassa")) {
     base.priorita = next.priorita;
   }
@@ -152,17 +155,16 @@ function dedupeDeadlineList(items) {
 }
 
 function salvaArchivioAzioni(azioni) {
-  localStorage.setItem("actionflow_archivio_azioni", JSON.stringify(dedupeTaskList(azioni)));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_archivio_azioni", dedupeTaskList(azioni));
 }
 
 function salvaArchivioScadenze(scadenze) {
-  localStorage.setItem("actionflow_archivio_scadenze", JSON.stringify(dedupeDeadlineList(scadenze)));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_archivio_scadenze", dedupeDeadlineList(scadenze));
 }
 
 function leggiArchivioAzioni() {
   try {
-    var raw = localStorage.getItem("actionflow_archivio_azioni");
-    var dati = raw ? JSON.parse(raw) : [];
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_archivio_azioni");
     var cleaned = dedupeTaskList(Array.isArray(dati) ? dati : []);
     if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaArchivioAzioni(cleaned);
     return cleaned;
@@ -171,8 +173,7 @@ function leggiArchivioAzioni() {
 
 function leggiArchivioScadenze() {
   try {
-    var raw = localStorage.getItem("actionflow_archivio_scadenze");
-    var dati = raw ? JSON.parse(raw) : [];
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_archivio_scadenze");
     var cleaned = dedupeDeadlineList(Array.isArray(dati) ? dati : []);
     if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaArchivioScadenze(cleaned);
     return cleaned;
@@ -181,8 +182,7 @@ function leggiArchivioScadenze() {
 
 function leggiChecklistCorrente() {
   try {
-    var raw = localStorage.getItem("actionflow_checklist");
-    var dati = raw ? JSON.parse(raw) : [];
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_checklist");
     var cleaned = dedupeTaskList(Array.isArray(dati) ? dati : []);
     if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaChecklistCorrente(cleaned);
     return cleaned;
@@ -190,13 +190,12 @@ function leggiChecklistCorrente() {
 }
 
 function salvaChecklistCorrente(azioni) {
-  localStorage.setItem("actionflow_checklist", JSON.stringify(dedupeTaskList(azioni)));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_checklist", dedupeTaskList(azioni));
 }
 
 function leggiScadenzeCorrenti() {
   try {
-    var raw = localStorage.getItem("actionflow_scadenze");
-    var dati = raw ? JSON.parse(raw) : [];
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_scadenze");
     var cleaned = dedupeDeadlineList(Array.isArray(dati) ? dati : []);
     if (JSON.stringify(dati || []) !== JSON.stringify(cleaned)) salvaScadenzeCorrenti(cleaned);
     return cleaned;
@@ -204,19 +203,15 @@ function leggiScadenzeCorrenti() {
 }
 
 function salvaScadenzeCorrenti(scadenze) {
-  localStorage.setItem("actionflow_scadenze", JSON.stringify(dedupeDeadlineList(scadenze)));
+  window.ActionFlowAuth.writeOwnedArray("actionflow_scadenze", dedupeDeadlineList(scadenze));
 }
 
 function leggiAzioniCompletate() {
-  try {
-    var raw = localStorage.getItem("actionflow_azioni_done");
-    var dati = raw ? JSON.parse(raw) : {};
-    return (dati && typeof dati === "object") ? dati : {};
-  } catch (e) { return {}; }
+  return window.ActionFlowAuth.readScopedObject("actionflow_azioni_done");
 }
 
 function salvaAzioniCompletate(completate) {
-  localStorage.setItem("actionflow_azioni_done", JSON.stringify(completate));
+  window.ActionFlowAuth.writeScopedObject("actionflow_azioni_done", completate);
 }
 
 function generaIdAzione(testo) {
@@ -232,6 +227,32 @@ function livelloPriorita(p) {
 function inizioOggiLocale() {
   var oggi = new Date();
   return new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate());
+}
+
+var THEME_STORAGE_KEY = "actionflow_theme";
+
+function getStoredThemePreference() {
+  try {
+    var theme = localStorage.getItem(THEME_STORAGE_KEY);
+    if (theme === "light" || theme === "dark" || theme === "system") {
+      return theme;
+    }
+  } catch (e) {}
+
+  return "system";
+}
+
+function getResolvedTheme(theme) {
+  if (theme === "light" || theme === "dark") {
+    return theme;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  var resolvedTheme = getResolvedTheme(theme || "system");
+  document.body.setAttribute("data-theme", resolvedTheme);
 }
 
 function parseDataISOLocale(dataISO) {
@@ -264,6 +285,23 @@ function formatDateForDisplay(dataISO) {
   });
 }
 
+function formatPreciseDateTimeForDisplay(dataISO, time) {
+  var data = parseDataISOLocale(dataISO);
+  if (!data) return "";
+
+  var testo = data.toLocaleDateString("it-IT", {
+    weekday: "short",
+    day: "numeric",
+    month: "long"
+  });
+
+  if (time) {
+    testo += " alle " + time;
+  }
+
+  return testo;
+}
+
 function getDynamicDateLabel(task) {
   var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
 
@@ -276,6 +314,18 @@ function getDynamicDateLabel(task) {
   if (giorni === 1) return "Domani";
   if (giorni === 2) return "Dopodomani";
   return formatDateForDisplay(task.dataISO);
+}
+
+function getPlanningBadgeLabel(scadenzaOriginale) {
+  var value = normalizeText(scadenzaOriginale || "");
+
+  if (!value) return "";
+  if (value.indexOf("questa settimana") !== -1) return "questa settimana";
+  if (value.indexOf("settimana prossima") !== -1) return "settimana prossima";
+  if (value.indexOf("tra qualche giorno") !== -1) return "tra qualche giorno";
+  if (value.indexOf("nei prossimi giorni") !== -1) return "nei prossimi giorni";
+  if (value.indexOf("entro il mese") !== -1) return "entro il mese";
+  return "";
 }
 
 function getDynamicTaskPriority(task) {
@@ -383,6 +433,35 @@ function impostaCompletamentoTask(testo, completato) {
   salvaChecklistCorrente(checklist);
 }
 
+function eliminaTaskDashboard(taskId) {
+  if (!taskId) return;
+  if (!window.confirm("Vuoi eliminare questo task?")) return;
+
+  var deletedTask = null;
+  var archivioAzioni = leggiArchivioAzioni().filter(function(task) {
+    if (task && task.id === taskId) {
+      deletedTask = task;
+      return false;
+    }
+    return true;
+  });
+  salvaArchivioAzioni(archivioAzioni);
+
+  var checklist = leggiChecklistCorrente().filter(function(task) {
+    return task && task.id !== taskId;
+  });
+  salvaChecklistCorrente(checklist);
+
+  var completate = leggiAzioniCompletate();
+  delete completate[taskId];
+  if (deletedTask && deletedTask.testo) {
+    delete completate[generaIdAzione(deletedTask.testo)];
+  }
+  salvaAzioniCompletate(completate);
+
+  renderDashboardAzioni();
+}
+
 function ordinaAzioniDashboard(azioni) {
   var completate = leggiAzioniCompletate();
   azioni.sort(function(a, b) {
@@ -479,6 +558,275 @@ function applicaFiltri(azioni) {
   });
 }
 
+function isDashboardTaskScheduled(task) {
+  var resolved = resolveTaskForDisplay(task);
+  return !!(resolved && resolved.dataISO);
+}
+
+function isDashboardTaskFlexible(task) {
+  var resolved = resolveTaskForDisplay(task);
+  return !!(resolved && !resolved.dataISO && normalizeText(resolved.scadenzaOriginale || ""));
+}
+
+function buildDashboardTaskItem(az, completate, sectionKey, indexInSection) {
+  var azDisplay = resolveTaskForDisplay(az);
+  var idAz = generaIdAzione(az.testo);
+  var durataStimata = normalizzaDurataStimata(azDisplay.durataStimataMinuti);
+  var energiaStimata = normalizzaEnergiaStimata(azDisplay.energiaStimata);
+
+  var li = document.createElement("li");
+  li.className = "priorita-" + (azDisplay.prioritaDinamica || "media") + " azione-item";
+  if (completate[idAz]) li.classList.add("azione-completata");
+
+  var cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.id = "dash_" + sectionKey + "_" + idAz + "_" + indexInSection;
+  cb.className = "azione-checkbox";
+  cb.checked = completate[idAz] === true;
+
+  cb.addEventListener("click", function(event) {
+    event.stopPropagation();
+  });
+
+  (function(checkbox, liEl, testoTask) {
+    checkbox.addEventListener("change", function() {
+      impostaCompletamentoTask(testoTask, checkbox.checked);
+      liEl.classList.toggle("azione-completata", checkbox.checked);
+      renderDashboardAzioni();
+    });
+  })(cb, li, az.testo);
+
+  var details = document.createElement("details");
+  details.className = "dashboard-task-details";
+
+  var summary = document.createElement("summary");
+  summary.className = "dashboard-task-summary";
+
+  var checkWrap = document.createElement("div");
+  checkWrap.className = "dashboard-task-check";
+  checkWrap.appendChild(cb);
+
+  var contenuto = document.createElement("div");
+  contenuto.className = "azione-contenuto dashboard-task-content";
+
+  var label = document.createElement("label");
+  label.htmlFor = cb.id;
+  label.className = "azione-testo";
+  label.textContent = azDisplay.testo;
+  label.addEventListener("click", function(event) {
+    event.stopPropagation();
+  });
+
+  var scadenzaWrap = document.createElement("div");
+  scadenzaWrap.className = "dashboard-task-deadline-wrap";
+
+  if (sectionKey === "scadenze" || (sectionKey === "tutti" && azDisplay.dataISO)) {
+    if (azDisplay.labelScadenzaDinamica) {
+      var badgeData = document.createElement("span");
+      badgeData.className = "badge-data dashboard-badge-data dashboard-task-deadline";
+      badgeData.textContent = azDisplay.labelScadenzaDinamica;
+      scadenzaWrap.appendChild(badgeData);
+    }
+  } else if (sectionKey === "da-programmare" || (sectionKey === "tutti" && azDisplay.scadenzaOriginale)) {
+    var badgePlanningType = document.createElement("span");
+    badgePlanningType.className = "badge-data dashboard-badge-data dashboard-task-deadline";
+    badgePlanningType.textContent = "Da programmare";
+    scadenzaWrap.appendChild(badgePlanningType);
+
+    var planningBadgeLabel = getPlanningBadgeLabel(azDisplay.scadenzaOriginale);
+    if (planningBadgeLabel) {
+      var badgePlanning = document.createElement("span");
+      badgePlanning.className = "badge-data dashboard-badge-data dashboard-task-deadline";
+      badgePlanning.textContent = planningBadgeLabel;
+      scadenzaWrap.appendChild(badgePlanning);
+    }
+  }
+
+  var meta = document.createElement("div");
+  meta.className = "azione-meta dashboard-task-meta";
+
+  if (sectionKey !== "tutti") {
+    var badgePriorita = document.createElement("span");
+    badgePriorita.className = "badge-priorita priorita-" + (azDisplay.prioritaDinamica || "media");
+    badgePriorita.textContent = (azDisplay.prioritaDinamica || "media").toUpperCase();
+    meta.appendChild(badgePriorita);
+  }
+
+  if ((sectionKey === "scadenze" || (sectionKey === "tutti" && azDisplay.dataISO)) && azDisplay.time) {
+    var badgeTime = document.createElement("span");
+    badgeTime.className = "badge-time dashboard-badge-time";
+    badgeTime.textContent = azDisplay.time;
+    meta.appendChild(badgeTime);
+  }
+
+  contenuto.appendChild(label);
+  if (scadenzaWrap.childNodes.length > 0) {
+    contenuto.appendChild(scadenzaWrap);
+  }
+  contenuto.appendChild(meta);
+
+  var indicator = document.createElement("span");
+  indicator.className = "dashboard-task-expand-indicator";
+  indicator.setAttribute("aria-hidden", "true");
+  indicator.textContent = "";
+
+  summary.setAttribute("aria-label", "Apri dettagli task");
+  summary.appendChild(checkWrap);
+  summary.appendChild(contenuto);
+  summary.appendChild(indicator);
+
+  var body = document.createElement("div");
+  body.className = "dashboard-task-body";
+
+  var bodyMeta = document.createElement("div");
+  bodyMeta.className = "dashboard-task-body-meta";
+
+  if (durataStimata) {
+    var durata = document.createElement("span");
+    durata.className = "azione-durata dashboard-azione-durata";
+    durata.textContent = durataStimata + " min";
+    bodyMeta.appendChild(durata);
+  }
+
+  if ((sectionKey === "scadenze" || (sectionKey === "tutti" && azDisplay.dataISO)) && azDisplay.time) {
+    var bodyBadgeTime = document.createElement("span");
+    bodyBadgeTime.className = "badge-time dashboard-badge-time";
+    bodyBadgeTime.textContent = azDisplay.time;
+    bodyMeta.appendChild(bodyBadgeTime);
+  }
+
+  if (energiaStimata) {
+    var badgeEnergia = document.createElement("span");
+    badgeEnergia.className = "badge-energia badge-energia-" + energiaStimata;
+    badgeEnergia.textContent = "Energia: " + energiaStimata;
+    bodyMeta.appendChild(badgeEnergia);
+  }
+
+  if ((sectionKey === "da-programmare" || (sectionKey === "tutti" && !azDisplay.dataISO)) && azDisplay.scadenzaOriginale) {
+    var scadenzaOriginale = document.createElement("span");
+    scadenzaOriginale.className = "dashboard-task-secondary-copy";
+    scadenzaOriginale.textContent = normalizeText(azDisplay.scadenzaOriginale);
+    bodyMeta.appendChild(scadenzaOriginale);
+  } else if ((sectionKey === "scadenze" || (sectionKey === "tutti" && azDisplay.dataISO)) && azDisplay.scadenzaOriginale) {
+    var dettaglioScadenza = formatPreciseDateTimeForDisplay(azDisplay.dataISO, azDisplay.time);
+
+    if (!dettaglioScadenza && azDisplay.labelScadenzaDinamica && azDisplay.labelScadenzaDinamica !== azDisplay.scadenzaOriginale) {
+      dettaglioScadenza = azDisplay.scadenzaOriginale;
+    }
+
+    if (dettaglioScadenza) {
+      var scadenzaOriginalePrecisa = document.createElement("span");
+      scadenzaOriginalePrecisa.className = "dashboard-task-secondary-copy";
+      scadenzaOriginalePrecisa.textContent = dettaglioScadenza;
+      bodyMeta.appendChild(scadenzaOriginalePrecisa);
+    }
+  }
+
+  var actions = document.createElement("div");
+  actions.className = "dashboard-task-actions";
+
+  var btnMod = document.createElement("button");
+  btnMod.type = "button";
+  btnMod.className = "btn-modifica";
+  btnMod.textContent = "Modifica";
+
+  (function(liEl, azioneRef) {
+    btnMod.addEventListener("click", function() {
+      attivaEditAzioneDash(liEl, azioneRef);
+    });
+  })(li, az);
+
+  actions.appendChild(btnMod);
+
+  var btnDelete = document.createElement("button");
+  btnDelete.type = "button";
+  btnDelete.className = "btn-modifica btn-elimina-task";
+  btnDelete.setAttribute("aria-label", "Elimina task");
+  btnDelete.textContent = "🗑";
+  btnDelete.addEventListener("click", function() {
+    eliminaTaskDashboard(az.id);
+  });
+
+  actions.appendChild(btnDelete);
+  body.appendChild(bodyMeta);
+  body.appendChild(actions);
+
+  details.appendChild(summary);
+  details.appendChild(body);
+
+  li.appendChild(details);
+  return li;
+}
+
+function renderDashboardTaskSection(contenitore, titoloSezione, azioni, completate, sectionKey, visualPriorityKey) {
+  if (!azioni.length) return;
+
+  var gruppoKey = visualPriorityKey || "media";
+
+  var sez = document.createElement("div");
+  sez.className = "gruppo-priorita gruppo-" + gruppoKey;
+
+  var titolo = document.createElement("h3");
+  titolo.className = "titolo-gruppo titolo-gruppo-" + gruppoKey;
+  titolo.textContent = titoloSezione;
+  sez.appendChild(titolo);
+
+  var ul = document.createElement("ul");
+
+  for (var i = 0; i < azioni.length; i++) {
+    ul.appendChild(buildDashboardTaskItem(azioni[i], completate, sectionKey, i));
+  }
+
+  sez.appendChild(ul);
+  contenitore.appendChild(sez);
+}
+
+function renderDashboardMainTaskGroups(contenitore, azioni, completate) {
+  var gruppi = {
+    alta: [],
+    media: [],
+    bassa: []
+  };
+
+  for (var i = 0; i < azioni.length; i++) {
+    var taskDisplay = resolveTaskForDisplay(azioni[i]);
+    var priorita = taskDisplay.prioritaDinamica || "bassa";
+    if (!gruppi[priorita]) priorita = "bassa";
+    gruppi[priorita].push(azioni[i]);
+  }
+
+  renderDashboardTaskSection(contenitore, "ALTA", gruppi.alta, completate, "tutti", "alta");
+  renderDashboardTaskSection(contenitore, "MEDIA", gruppi.media, completate, "tutti", "media");
+  renderDashboardTaskSection(contenitore, "BASSA", gruppi.bassa, completate, "tutti", "bassa");
+}
+
+function renderDashboardSideTaskSection(contenitoreId, vuotoId, azioni, completate, sectionKey) {
+  var contenitore = document.getElementById(contenitoreId);
+  var vuoto = document.getElementById(vuotoId);
+  if (!contenitore || !vuoto) return;
+
+  contenitore.innerHTML = "";
+
+  if (!azioni.length) {
+    vuoto.classList.remove("nascosto");
+    return;
+  }
+
+  vuoto.classList.add("nascosto");
+  var ul = document.createElement("ul");
+
+  for (var i = 0; i < azioni.length; i++) {
+    ul.appendChild(buildDashboardTaskItem(azioni[i], completate, sectionKey, i));
+  }
+
+  contenitore.appendChild(ul);
+}
+
+function resetDashboardSideSections() {
+  renderDashboardSideTaskSection("contenitore-dashboard-scadenze", "dashboard-scadenze-vuote", [], {}, "scadenze");
+  renderDashboardSideTaskSection("contenitore-dashboard-riprogrammare", "dashboard-riprogrammare-vuote", [], {}, "da-programmare");
+}
+
 function renderDashboardAzioni() {
   var contenitore = document.getElementById("contenitore-dashboard-azioni");
   var vuoto = document.getElementById("dashboard-azioni-vuote");
@@ -489,6 +837,7 @@ function renderDashboardAzioni() {
 
   if (tutteLeAzioni.length === 0) {
     vuoto.classList.remove("nascosto");
+    resetDashboardSideSections();
     return;
   }
 
@@ -497,198 +846,26 @@ function renderDashboardAzioni() {
   if (azioni.length === 0) {
     vuoto.textContent = "Nessuna azione corrisponde ai filtri.";
     vuoto.classList.remove("nascosto");
+    resetDashboardSideSections();
     return;
   }
   vuoto.classList.add("nascosto");
 
   ordinaAzioniDashboard(azioni);
+  var azioniConScadenza = [];
+  var azioniDaProgrammare = [];
 
-  var gruppi = { alta: [], media: [], bassa: [] };
   for (var i = 0; i < azioni.length; i++) {
-    var p = getDynamicTaskPriority(resolveTaskForDisplay(azioni[i]));
-    (gruppi[p] || gruppi.media).push(azioni[i]);
-  }
-
-  var ordine = [
-    { chiave: "alta",  titolo: "Alta priorità" },
-    { chiave: "media", titolo: "Media priorità" },
-    { chiave: "bassa", titolo: "Bassa priorità" }
-  ];
-
-  for (var g = 0; g < ordine.length; g++) {
-    var gruppo = gruppi[ordine[g].chiave];
-    if (gruppo.length === 0) continue;
-
-    var sez = document.createElement("div");
-    sez.className = "gruppo-priorita gruppo-" + ordine[g].chiave;
-
-    var titolo = document.createElement("h3");
-    titolo.className = "titolo-gruppo titolo-gruppo-" + ordine[g].chiave;
-    titolo.textContent = ordine[g].titolo;
-    sez.appendChild(titolo);
-
-    var ul = document.createElement("ul");
-
-    for (var j = 0; j < gruppo.length; j++) {
-      var az = gruppo[j];
-      var azDisplay = resolveTaskForDisplay(az);
-      var idAz = generaIdAzione(az.testo);
-      var durataStimata = normalizzaDurataStimata(azDisplay.durataStimataMinuti);
-      var energiaStimata = normalizzaEnergiaStimata(azDisplay.energiaStimata);
-
-      var li = document.createElement("li");
-      li.className = "priorita-" + (azDisplay.prioritaDinamica || "media") + " azione-item";
-      if (completate[idAz]) li.classList.add("azione-completata");
-
-      var cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.id = "dash_" + idAz + "_" + g + "_" + j;
-      cb.className = "azione-checkbox";
-      cb.checked = completate[idAz] === true;
-
-      cb.addEventListener("click", function(event) {
-        event.stopPropagation();
-      });
-
-      (function(checkbox, liEl, testoTask) {
-        checkbox.addEventListener("change", function() {
-          impostaCompletamentoTask(testoTask, checkbox.checked);
-          liEl.classList.toggle("azione-completata", checkbox.checked);
-          renderDashboardAzioni();
-        });
-      })(cb, li, az.testo);
-
-      var details = document.createElement("details");
-      details.className = "dashboard-task-details";
-
-      var summary = document.createElement("summary");
-      summary.className = "dashboard-task-summary";
-
-      var checkWrap = document.createElement("div");
-      checkWrap.className = "dashboard-task-check";
-      checkWrap.appendChild(cb);
-
-      var contenuto = document.createElement("div");
-      contenuto.className = "azione-contenuto dashboard-task-content";
-
-      var label = document.createElement("label");
-      label.htmlFor = cb.id;
-      label.className = "azione-testo";
-      label.textContent = azDisplay.testo;
-      label.addEventListener("click", function(event) {
-        event.stopPropagation();
-      });
-
-      var scadenzaWrap = document.createElement("div");
-      scadenzaWrap.className = "dashboard-task-deadline-wrap";
-
-      if (azDisplay.labelScadenzaDinamica) {
-        var badgeData = document.createElement("span");
-        badgeData.className = "badge-data dashboard-badge-data dashboard-task-deadline";
-        badgeData.textContent = azDisplay.labelScadenzaDinamica;
-        scadenzaWrap.appendChild(badgeData);
-      }
-
-      var meta = document.createElement("div");
-      meta.className = "azione-meta dashboard-task-meta";
-
-      var badgePriorita = document.createElement("span");
-      badgePriorita.className = "badge-priorita priorita-" + (azDisplay.prioritaDinamica || "media");
-      badgePriorita.textContent = azDisplay.prioritaDinamica || "media";
-      meta.appendChild(badgePriorita);
-
-      if (azDisplay.time) {
-        var badgeTime = document.createElement("span");
-        badgeTime.className = "badge-time dashboard-badge-time";
-        badgeTime.textContent = azDisplay.time;
-        meta.appendChild(badgeTime);
-      }
-
-      var indicator = document.createElement("span");
-      indicator.className = "dashboard-task-expand-indicator";
-      indicator.setAttribute("aria-hidden", "true");
-      indicator.textContent = "";
-
-      summary.setAttribute("aria-label", "Apri dettagli task");
-
-      contenuto.appendChild(label);
-      if (scadenzaWrap.childNodes.length > 0) {
-        contenuto.appendChild(scadenzaWrap);
-      }
-      contenuto.appendChild(meta);
-
-      summary.appendChild(checkWrap);
-      summary.appendChild(contenuto);
-      summary.appendChild(indicator);
-
-      var body = document.createElement("div");
-      body.className = "dashboard-task-body";
-
-      var bodyMeta = document.createElement("div");
-      bodyMeta.className = "dashboard-task-body-meta";
-
-      if (durataStimata) {
-        var durata = document.createElement("span");
-        durata.className = "azione-durata dashboard-azione-durata";
-        durata.textContent = durataStimata + " min";
-        bodyMeta.appendChild(durata);
-      }
-
-      if (azDisplay.time) {
-        var bodyBadgeTime = document.createElement("span");
-        bodyBadgeTime.className = "badge-time dashboard-badge-time";
-        bodyBadgeTime.textContent = azDisplay.time;
-        bodyMeta.appendChild(bodyBadgeTime);
-      }
-
-      if (energiaStimata) {
-        var badgeEnergia = document.createElement("span");
-        badgeEnergia.className = "badge-energia badge-energia-" + energiaStimata;
-        badgeEnergia.textContent = "Energia: " + energiaStimata;
-        bodyMeta.appendChild(badgeEnergia);
-      }
-
-      if (azDisplay.scadenzaOriginale) {
-        var dettaglioScadenza = azDisplay.labelScadenzaDinamica && azDisplay.labelScadenzaDinamica !== azDisplay.scadenzaOriginale
-          ? azDisplay.scadenzaOriginale
-          : "";
-
-        if (dettaglioScadenza) {
-          var scadenzaOriginale = document.createElement("span");
-          scadenzaOriginale.className = "dashboard-task-secondary-copy";
-          scadenzaOriginale.textContent = dettaglioScadenza;
-          bodyMeta.appendChild(scadenzaOriginale);
-        }
-      }
-
-      var actions = document.createElement("div");
-      actions.className = "dashboard-task-actions";
-
-      var btnMod = document.createElement("button");
-      btnMod.type = "button";
-      btnMod.className = "btn-modifica";
-      btnMod.textContent = "Modifica";
-
-      (function(liEl, azioneRef) {
-        btnMod.addEventListener("click", function() {
-          attivaEditAzioneDash(liEl, azioneRef);
-        });
-      })(li, az);
-
-      actions.appendChild(btnMod);
-      body.appendChild(bodyMeta);
-      body.appendChild(actions);
-
-      details.appendChild(summary);
-      details.appendChild(body);
-
-      li.appendChild(details);
-      ul.appendChild(li);
+    if (isDashboardTaskScheduled(azioni[i])) {
+      azioniConScadenza.push(azioni[i]);
+    } else if (isDashboardTaskFlexible(azioni[i])) {
+      azioniDaProgrammare.push(azioni[i]);
     }
-
-    sez.appendChild(ul);
-    contenitore.appendChild(sez);
   }
+
+  renderDashboardMainTaskGroups(contenitore, azioni, completate);
+  renderDashboardSideTaskSection("contenitore-dashboard-scadenze", "dashboard-scadenze-vuote", azioniConScadenza, completate, "scadenze");
+  renderDashboardSideTaskSection("contenitore-dashboard-riprogrammare", "dashboard-riprogrammare-vuote", azioniDaProgrammare, completate, "da-programmare");
 }
 
 function attivaEditAzioneDash(li, azione) {
@@ -823,65 +1000,18 @@ function attivaEditAzioneDash(li, azione) {
   li.appendChild(btnAnnulla);
 }
 
-function renderDashboardScadenze() {
-  var contenitore = document.getElementById("contenitore-dashboard-scadenze");
-  var vuoto = document.getElementById("dashboard-scadenze-vuote");
-  var scadenze = leggiArchivioScadenze();
-  var azioni = leggiArchivioAzioni();
-
-  contenitore.innerHTML = "";
-
-  if (scadenze.length === 0) {
-    vuoto.classList.remove("nascosto");
-    return;
-  }
-  vuoto.classList.add("nascosto");
-
-  ordinaScadenzeDashboard(scadenze);
-
-  var ul = document.createElement("ul");
-  ul.className = "lista-scadenze-dashboard";
-
-  for (var i = 0; i < scadenze.length; i++) {
-    var sc = scadenze[i];
-    var priorita = trovaPrioritaAzione(sc.testo, azioni);
-
-    var li = document.createElement("li");
-    li.className = "scadenza-row";
-
-    var badgeData = document.createElement("span");
-    badgeData.className = "badge-data";
-    var testoData = sc.data || "";
-    if (sc.dataRisolta) testoData += " (" + sc.dataRisolta + ")";
-    badgeData.textContent = testoData;
-
-    var testoAzione = document.createElement("span");
-    testoAzione.className = "scadenza-azione-testo";
-    testoAzione.textContent = sc.testo;
-
-    var badgePriorita = document.createElement("span");
-    badgePriorita.className = "badge-priorita priorita-" + priorita;
-    badgePriorita.textContent = priorita;
-
-    li.appendChild(badgeData);
-    li.appendChild(testoAzione);
-    li.appendChild(badgePriorita);
-    ul.appendChild(li);
-  }
-
-  contenitore.appendChild(ul);
-}
-
 function svuotaTuttiITask() {
-  localStorage.removeItem("actionflow_archivio_azioni");
-  localStorage.removeItem("actionflow_archivio_scadenze");
-  localStorage.removeItem("actionflow_checklist");
-  localStorage.removeItem("actionflow_scadenze");
-  localStorage.removeItem("actionflow_azioni_done");
-  localStorage.removeItem("actionflow_checklist_done");
-  localStorage.removeItem("actionflow_daily_plan");
+  var confirmed = window.confirm("Sei sicuro di voler eliminare tutti i task? Questa azione non pu\u00f2 essere annullata.");
+  if (!confirmed) return;
+
+  window.ActionFlowAuth.clearOwnedArray("actionflow_archivio_azioni");
+  window.ActionFlowAuth.clearOwnedArray("actionflow_archivio_scadenze");
+  window.ActionFlowAuth.clearOwnedArray("actionflow_checklist");
+  window.ActionFlowAuth.clearOwnedArray("actionflow_scadenze");
+  window.ActionFlowAuth.clearScopedObject("actionflow_azioni_done");
+  window.ActionFlowAuth.clearScopedObject("actionflow_checklist_done");
+  window.ActionFlowAuth.clearScopedObject("actionflow_daily_plan");
   renderDashboardAzioni();
-  renderDashboardScadenze();
 }
 
 function inizializzaFiltri() {
@@ -915,6 +1045,8 @@ function inizializzaFiltri() {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
+  applyTheme(getStoredThemePreference());
+
   // Profilo
   (function() {
     try {
@@ -936,11 +1068,29 @@ document.addEventListener("DOMContentLoaded", function() {
   })();
 
   renderDashboardAzioni();
-  renderDashboardScadenze();
   inizializzaFiltri();
 
   var bottoneSvuota = document.getElementById("bottone-svuota-dashboard");
   if (bottoneSvuota) {
     bottoneSvuota.addEventListener("click", svuotaTuttiITask);
   }
+
+  var systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+  if (systemThemeMedia && typeof systemThemeMedia.addEventListener === "function") {
+    systemThemeMedia.addEventListener("change", function() {
+      if (getStoredThemePreference() === "system") {
+        applyTheme("system");
+      }
+    });
+  } else if (systemThemeMedia && typeof systemThemeMedia.addListener === "function") {
+    systemThemeMedia.addListener(function() {
+      if (getStoredThemePreference() === "system") {
+        applyTheme("system");
+      }
+    });
+  }
+});
+
+window.addEventListener("actionflow-auth-ready", function() {
+  renderDashboardAzioni();
 });

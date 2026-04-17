@@ -46,23 +46,73 @@ if (!OPENAI_API_KEY) {
 const express = require("express");
 const OpenAI = require("openai").default;
 const crypto = require("crypto");
+const { createAuthRouter } = require("./auth/authRoutes");
+const { createCalendarRouter } = require("./calendar/calendarRoutes");
+const { createSessionMiddleware } = require("./auth/sessionStore");
+const { attachCurrentUser } = require("./auth/userSessionMiddleware");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
 const PROJECT_ROOT = __dirname;
 
+console.log("[DEBUG] Startup file:", __filename);
+
+app.use((req, res, next) => {
+  console.log("[REQ]", req.method, req.originalUrl);
+  next();
+});
+
 // --- Middleware ---
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(createSessionMiddleware());
+app.use(attachCurrentUser);
+console.log("[DEBUG] Mounting /auth router");
+app.use("/auth", createAuthRouter());
+app.use("/calendar", createCalendarRouter());
 app.use(express.static(PROJECT_ROOT));
 
+app.get("/__health", (req, res) => {
+  res.json({ ok: true, file: __filename });
+});
+
+app.get("/__diag", (req, res) => {
+  res.json({
+    ok: true,
+    file: __filename,
+    pid: process.pid,
+    cwd: process.cwd(),
+    nodeEnv: process.env.NODE_ENV || null,
+    port: process.env.PORT || null,
+    hasOpenAiKey: Boolean((process.env.OPENAI_API_KEY || "").trim()),
+    hasGoogleClientId: Boolean((process.env.GOOGLE_CLIENT_ID || "").trim()),
+    hasGoogleClientSecret: Boolean((process.env.GOOGLE_CLIENT_SECRET || "").trim()),
+    hasGoogleRedirectUri: Boolean((process.env.GOOGLE_REDIRECT_URI || "").trim()),
+    hasSessionSecret: Boolean((process.env.SESSION_SECRET || "").trim()),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // --- Frontend routes ---
+app.get("/login", (req, res) => {
+  if (req.currentUser) {
+    return res.redirect("/");
+  }
+
+  return res.sendFile(path.join(PROJECT_ROOT, "login.html"));
+});
+
 app.get("/", (req, res) => {
   res.sendFile(path.join(PROJECT_ROOT, "index.html"));
 });
 
 app.get("/focus", (req, res) => {
   res.sendFile(path.join(PROJECT_ROOT, "focus.html"));
+});
+
+app.get("/organizza-giornata", (req, res) => {
+  res.sendFile(path.join(PROJECT_ROOT, "organizza-giornata.html"));
 });
 
 app.get("/dashboard", (req, res) => {
@@ -115,9 +165,28 @@ const ANALYSIS_SCHEMA = {
           required: ["titolo", "scadenzaOriginale", "dataISO"],
           additionalProperties: false
         }
+      },
+      daPianificare: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            titolo: { type: "string", description: "Breve descrizione dell'attivita con riferimento temporale flessibile" },
+            riferimentoTemporale: { type: "string", description: "Riferimento temporale vago originale, es. 'questa settimana'" },
+            tipoFlessibilita: {
+              type: "string",
+              enum: ["settimana_corrente", "settimana_prossima", "prossimi_giorni", "entro_mese", "flessibile"],
+              description: "Classificazione del livello di flessibilita temporale"
+            },
+            durataStimataMinuti: { type: "integer", description: "Stima pratica e realistica della durata dell'attivita in minuti interi." },
+            energiaStimata: { type: "string", enum: ["bassa", "media", "alta"], description: "Livello di energia mentale richiesto dall'attivita." }
+          },
+          required: ["titolo", "riferimentoTemporale", "tipoFlessibilita", "durataStimataMinuti", "energiaStimata"],
+          additionalProperties: false
+        }
       }
     },
-    required: ["azioni", "scadenze"],
+    required: ["azioni", "scadenze", "daPianificare"],
     additionalProperties: false
   }
 };
@@ -169,13 +238,23 @@ REGOLE PER LE PRIORITÀ:
 
 REGOLE PER LE SCADENZE:
 - Estrai ogni coppia azione-scadenza trovata.
+- L'array scadenze deve contenere SOLO scadenze precise e risolvibili in un giorno preciso.
 - Se il testo dice "oggi", "domani" o "dopodomani", restituisci una dataISO precisa coerente con la data di oggi.
 - Se il testo dice un giorno preciso della settimana (lunedi, martedi, mercoledi, giovedi, venerdi, sabato, domenica), restituisci una dataISO precisa coerente con la data di oggi.
 - Se il testo contiene una data esplicita (es. "30 aprile"), convertila in formato ISO.
-- Se il riferimento temporale e troppo vago o non identifica un solo giorno preciso, NON inventare una data. In questi casi mantieni scadenzaOriginale e usa dataISO = null.
-- Esempi di riferimenti vaghi che non devono produrre una data precisa se il giorno non e determinabile con sicurezza: "questa settimana", "settimana prossima", "piu avanti", "entro il mese", "nei prossimi giorni".
+- Se il riferimento temporale e troppo vago o non identifica un solo giorno preciso, NON inserirlo in scadenze.
+- I riferimenti vaghi devono andare nell'array daPianificare con: titolo, riferimentoTemporale e tipoFlessibilita.
+- Ogni elemento di daPianificare deve includere anche durataStimataMinuti ed energiaStimata.
+- Esempi di riferimenti vaghi che NON devono comparire in scadenze: "questa settimana", "settimana prossima", "tra qualche giorno", "quando ho tempo", "piu avanti", "entro il mese", "nei prossimi giorni".
+- Usa questi valori per tipoFlessibilita:
+  - settimana_corrente: per "questa settimana"
+  - settimana_prossima: per "settimana prossima"
+  - prossimi_giorni: per "tra qualche giorno" o "nei prossimi giorni"
+  - entro_mese: per "entro il mese"
+  - flessibile: per "quando ho tempo", "piu avanti" o riferimenti simili
 - Non trasformare riferimenti vaghi in "oggi" per default.
 - Non inventare scadenze: se un'azione non ha una scadenza, scadenzaOriginale e dataISO devono essere null nell'azione e l'azione non deve comparire nell'array scadenze.
+- Restituisci sempre tutti e tre gli array: azioni, scadenze, daPianificare. Se una sezione e vuota, restituisci un array vuoto.
 
 REGOLE PER GLI ORARI:
 - Estrai l'orario se presente nella frase e compilalo nel campo time dell'azione.
@@ -186,6 +265,62 @@ REGOLE PER GLI ORARI:
 - Non inventare orari: evita default automatici se non esplicitamente presenti nel testo.
 
 Rispondi SOLO con il JSON richiesto, senza testo aggiuntivo.`;
+}
+
+function classifyFlexibleReference(reference) {
+  const value = String(reference || "").toLowerCase();
+
+  if (value.includes("questa settimana")) return "settimana_corrente";
+  if (value.includes("settimana prossima")) return "settimana_prossima";
+  if (value.includes("tra qualche giorno") || value.includes("nei prossimi giorni")) return "prossimi_giorni";
+  if (value.includes("entro il mese")) return "entro_mese";
+  return "flessibile";
+}
+
+function normalizeAnalysisPayload(parsed) {
+  const result = parsed && typeof parsed === "object" ? parsed : {};
+  const azioni = Array.isArray(result.azioni) ? result.azioni : [];
+  const scadenzeSource = Array.isArray(result.scadenze) ? result.scadenze : [];
+  const daPianificare = Array.isArray(result.daPianificare) ? result.daPianificare.slice() : [];
+  const scadenze = [];
+
+  for (let i = 0; i < scadenzeSource.length; i++) {
+    const item = scadenzeSource[i];
+    if (!item || typeof item !== "object") continue;
+
+    if (item.dataISO) {
+      scadenze.push(item);
+      continue;
+    }
+
+    const titolo = item.titolo || "";
+    const riferimentoTemporale = item.scadenzaOriginale || "";
+    let matchedAction = null;
+
+    for (let j = 0; j < azioni.length; j++) {
+      if (azioni[j] && azioni[j].testo === titolo) {
+        matchedAction = azioni[j];
+        break;
+      }
+    }
+
+    daPianificare.push({
+      titolo,
+      riferimentoTemporale,
+      tipoFlessibilita: classifyFlexibleReference(riferimentoTemporale),
+      durataStimataMinuti: matchedAction && Number.isInteger(matchedAction.durataStimataMinuti)
+        ? matchedAction.durataStimataMinuti
+        : 30,
+      energiaStimata: matchedAction && typeof matchedAction.energiaStimata === "string"
+        ? matchedAction.energiaStimata
+        : "media",
+    });
+  }
+
+  result.azioni = azioni;
+  result.scadenze = scadenze;
+  result.daPianificare = daPianificare;
+  return result;
 }
 
 // --- Route POST /api/analyze ---
@@ -212,7 +347,7 @@ app.post("/api/analyze", async (req, res) => {
     });
 
     const output = response.output_text;
-    const parsed = JSON.parse(output);
+    const parsed = normalizeAnalysisPayload(JSON.parse(output));
 
     // Aggiunge id univoco a ogni azione e scadenza
     if (Array.isArray(parsed.azioni)) {
@@ -223,6 +358,11 @@ app.post("/api/analyze", async (req, res) => {
     if (Array.isArray(parsed.scadenze)) {
       for (let i = 0; i < parsed.scadenze.length; i++) {
         parsed.scadenze[i].id = crypto.randomUUID();
+      }
+    }
+    if (Array.isArray(parsed.daPianificare)) {
+      for (let i = 0; i < parsed.daPianificare.length; i++) {
+        parsed.daPianificare[i].id = crypto.randomUUID();
       }
     }
 
@@ -241,7 +381,50 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
+app.use((req, res) => {
+  res.status(404).json({
+    error: "Route not found",
+    method: req.method,
+    path: req.originalUrl,
+  });
+});
+
 // --- Avvio server ---
+function printRegisteredRoutes() {
+  function visitStack(stack, prefix) {
+    if (!Array.isArray(stack)) return;
+
+    for (const layer of stack) {
+      if (layer.route && layer.route.path) {
+        const methods = Object.keys(layer.route.methods || {})
+          .filter((method) => layer.route.methods[method])
+          .map((method) => method.toUpperCase())
+          .join(",");
+        console.log("[ROUTE]", methods, `${prefix}${layer.route.path}`);
+        continue;
+      }
+
+      if (layer.name === "router" && layer.handle && Array.isArray(layer.handle.stack)) {
+        let nextPrefix = prefix;
+
+        if (layer.regexp && layer.regexp.fast_slash !== true) {
+          const match = String(layer.regexp).match(/\\\/([^\\]+)\\\/\?\(\?=\\\/\|\$\)\/i/);
+          if (match && match[1]) {
+            nextPrefix += "/" + match[1].replace(/\\\//g, "/");
+          }
+        }
+
+        visitStack(layer.handle.stack, nextPrefix);
+      }
+    }
+  }
+
+  const rootStack = (app.router && app.router.stack) || (app._router && app._router.stack) || [];
+  console.log("[DEBUG] Registered routes:");
+  visitStack(rootStack, "");
+}
+
 app.listen(PORT, () => {
+  printRegisteredRoutes();
   console.log(`[ActionFlow] Server avviato su http://localhost:${PORT}`);
 });

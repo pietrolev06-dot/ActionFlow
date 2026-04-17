@@ -14,7 +14,16 @@
 
     <div class="toolbar-checklist">
       <button type="button" class="button-secondario" onclick="window.location.href='index.html'">Torna a ActionFlow</button>
-      <button type="button" id="bottone-svuota-checklist">Svuota checklist</button>
+      <button type="button" id="bottone-svuota-checklist">
+        <span class="ui-button-content">
+          <span class="ui-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M9.25 4.5a1 1 0 0 1 .95-.68h3.6a1 1 0 0 1 .95.68l.25.75H18.5a.75.75 0 0 1 0 1.5h-.64l-.72 11.03A2.25 2.25 0 0 1 14.89 20H9.11a2.25 2.25 0 0 1-2.25-2.22L6.14 6.75H5.5a.75.75 0 0 1 0-1.5H9l.25-.75Zm-1 2.25.71 10.93a.75.75 0 0 0 .75.72h5.78a.75.75 0 0 0 .75-.72l.71-10.93h-8.7Zm2.49 2.25a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Zm3.5 0a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Z" fill="currentColor"></path>
+            </svg>
+          </span>
+          <span>Svuota checklist</span>
+        </span>
+      </button>
     </div>
 
     <div class="sezione blu" id="box-checklist-pagina">
@@ -24,6 +33,7 @@
     </div>
   </div>
 
+  <script src="authClient.js"></script>
   <script src="checklist.js"></script>
 </body>
 </html>
