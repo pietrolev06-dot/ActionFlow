@@ -50,6 +50,7 @@ const { createAuthRouter } = require("./auth/authRoutes");
 const { createCalendarRouter } = require("./calendar/calendarRoutes");
 const { createSessionMiddleware } = require("./auth/sessionStore");
 const { attachCurrentUser } = require("./auth/userSessionMiddleware");
+const { getUserStorage, setUserStorage } = require("./models/userDataStore");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -91,6 +92,28 @@ app.get("/__diag", (req, res) => {
     hasGoogleRedirectUri: Boolean((process.env.GOOGLE_REDIRECT_URI || "").trim()),
     hasSessionSecret: Boolean((process.env.SESSION_SECRET || "").trim()),
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/api/user-storage", (req, res) => {
+  if (!req.currentUser || !req.currentUser.id) {
+    return res.status(401).json({ error: "Utente non autenticato." });
+  }
+
+  return res.json({
+    userId: req.currentUser.id,
+    storage: getUserStorage(req.currentUser.id),
+  });
+});
+
+app.put("/api/user-storage", (req, res) => {
+  if (!req.currentUser || !req.currentUser.id) {
+    return res.status(401).json({ error: "Utente non autenticato." });
+  }
+
+  return res.json({
+    userId: req.currentUser.id,
+    storage: setUserStorage(req.currentUser.id, req.body || {}),
   });
 });
 

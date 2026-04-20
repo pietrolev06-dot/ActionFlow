@@ -11,10 +11,12 @@
     "actionflow_azioni_done",
     "actionflow_checklist_done"
   ];
+  var USER_STORAGE_SYNC_URL = "/api/user-storage";
   var authState = {
     user: null,
     loaded: false
   };
+  var pendingSyncTimeout = null;
 
   function cloneRecord(record) {
     return Object.assign({}, record);
@@ -119,6 +121,18 @@
     return normalized;
   }
 
+  function shouldSyncWithServer() {
+    return !!(authState.user && getCurrentUserId());
+  }
+
+  function isManagedArrayKey(baseKey) {
+    return MIGRATION_ARRAY_KEYS.indexOf(baseKey) !== -1;
+  }
+
+  function isManagedScopedKey(baseKey) {
+    return MIGRATION_SCOPED_KEYS.indexOf(baseKey) !== -1;
+  }
+
   function readOwnedArray(baseKey) {
     try {
       var raw = localStorage.getItem(baseKey);
@@ -134,7 +148,7 @@
     }
   }
 
-  function writeOwnedArray(baseKey, records) {
+  function writeOwnedArrayLocal(baseKey, records) {
     var rawAll;
 
     try {
@@ -153,6 +167,14 @@
 
     var ownedRecords = (Array.isArray(records) ? records : []).map(attachUserId);
     localStorage.setItem(baseKey, JSON.stringify(preserved.concat(ownedRecords)));
+  }
+
+  function writeOwnedArray(baseKey, records) {
+    writeOwnedArrayLocal(baseKey, records);
+
+    if (isManagedArrayKey(baseKey)) {
+      scheduleServerSync();
+    }
   }
 
   function clearOwnedArray(baseKey) {
@@ -186,7 +208,7 @@
     }
   }
 
-  function writeScopedObject(baseKey, value) {
+  function writeScopedObjectLocal(baseKey, value) {
     var scopedKey = getScopedStorageKey(baseKey);
     var scopeIds = getCurrentScopeIds();
     localStorage.setItem(scopedKey, JSON.stringify(value || {}));
@@ -199,7 +221,23 @@
     }
   }
 
+  function writeScopedObject(baseKey, value) {
+    writeScopedObjectLocal(baseKey, value);
+
+    if (isManagedScopedKey(baseKey)) {
+      scheduleServerSync();
+    }
+  }
+
   function clearScopedObject(baseKey) {
+    clearScopedObjectLocal(baseKey);
+
+    if (isManagedScopedKey(baseKey)) {
+      scheduleServerSync();
+    }
+  }
+
+  function clearScopedObjectLocal(baseKey) {
     var scopeIds = getCurrentScopeIds();
     localStorage.removeItem(getScopedStorageKey(baseKey));
 
@@ -319,6 +357,143 @@
     }
   }
 
+  function buildCurrentUserStorageSnapshot() {
+    var arrays = {};
+    var scoped = {};
+
+    for (var i = 0; i < MIGRATION_ARRAY_KEYS.length; i++) {
+      arrays[MIGRATION_ARRAY_KEYS[i]] = readOwnedArray(MIGRATION_ARRAY_KEYS[i]);
+    }
+
+    for (var j = 0; j < MIGRATION_SCOPED_KEYS.length; j++) {
+      scoped[MIGRATION_SCOPED_KEYS[j]] = readScopedObject(MIGRATION_SCOPED_KEYS[j]);
+    }
+
+    return {
+      arrays: arrays,
+      scoped: scoped
+    };
+  }
+
+  function hasMeaningfulStorageData(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") {
+      return false;
+    }
+
+    var arrays = snapshot.arrays && typeof snapshot.arrays === "object" ? snapshot.arrays : {};
+    var scoped = snapshot.scoped && typeof snapshot.scoped === "object" ? snapshot.scoped : {};
+
+    for (var arrayKey in arrays) {
+      if (Object.prototype.hasOwnProperty.call(arrays, arrayKey) && Array.isArray(arrays[arrayKey]) && arrays[arrayKey].length > 0) {
+        return true;
+      }
+    }
+
+    for (var scopedKey in scoped) {
+      if (
+        Object.prototype.hasOwnProperty.call(scoped, scopedKey) &&
+        scoped[scopedKey] &&
+        typeof scoped[scopedKey] === "object" &&
+        Object.keys(scoped[scopedKey]).length > 0
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function applyServerStorageSnapshot(snapshot) {
+    var arrays = snapshot && snapshot.arrays && typeof snapshot.arrays === "object" ? snapshot.arrays : {};
+    var scoped = snapshot && snapshot.scoped && typeof snapshot.scoped === "object" ? snapshot.scoped : {};
+
+    for (var i = 0; i < MIGRATION_ARRAY_KEYS.length; i++) {
+      var arrayKey = MIGRATION_ARRAY_KEYS[i];
+      writeOwnedArrayLocal(arrayKey, Array.isArray(arrays[arrayKey]) ? arrays[arrayKey] : []);
+    }
+
+    for (var j = 0; j < MIGRATION_SCOPED_KEYS.length; j++) {
+      var scopedKey = MIGRATION_SCOPED_KEYS[j];
+      writeScopedObjectLocal(scopedKey, scoped[scopedKey] && typeof scoped[scopedKey] === "object" ? scoped[scopedKey] : {});
+    }
+  }
+
+  function pushCurrentUserStorageSnapshot() {
+    if (!shouldSyncWithServer()) {
+      return Promise.resolve(null);
+    }
+
+    return fetch(USER_STORAGE_SYNC_URL, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(buildCurrentUserStorageSnapshot())
+    })
+      .then(function(response) {
+        if (!response.ok) {
+          return null;
+        }
+
+        return response.json();
+      })
+      .catch(function() {
+        return null;
+      });
+  }
+
+  function scheduleServerSync() {
+    if (!shouldSyncWithServer()) {
+      return;
+    }
+
+    if (pendingSyncTimeout) {
+      global.clearTimeout(pendingSyncTimeout);
+    }
+
+    pendingSyncTimeout = global.setTimeout(function() {
+      pendingSyncTimeout = null;
+      pushCurrentUserStorageSnapshot();
+    }, 80);
+  }
+
+  function hydrateCurrentUserStorage() {
+    if (!shouldSyncWithServer()) {
+      return Promise.resolve(null);
+    }
+
+    var localSnapshot = buildCurrentUserStorageSnapshot();
+
+    return fetch(USER_STORAGE_SYNC_URL, {
+      credentials: "same-origin"
+    })
+      .then(function(response) {
+        if (!response.ok) {
+          return { storage: null };
+        }
+
+        return response.json();
+      })
+      .then(function(payload) {
+        var remoteSnapshot = payload && payload.storage ? payload.storage : null;
+
+        if (hasMeaningfulStorageData(remoteSnapshot)) {
+          applyServerStorageSnapshot(remoteSnapshot);
+          return remoteSnapshot;
+        }
+
+        if (hasMeaningfulStorageData(localSnapshot)) {
+          return pushCurrentUserStorageSnapshot();
+        }
+
+        return remoteSnapshot;
+      })
+      .catch(function() {
+        return null;
+      });
+  }
+
   function notifyReady() {
     global.dispatchEvent(new CustomEvent("actionflow-auth-ready", {
       detail: { user: authState.user }
@@ -339,8 +514,10 @@
         authState.user = payload && payload.user ? payload.user : null;
         authState.loaded = true;
         migrateCurrentUserOwnership();
-        notifyReady();
-        return authState.user;
+        return hydrateCurrentUserStorage().then(function() {
+          notifyReady();
+          return authState.user;
+        });
       })
       .catch(function() {
         authState.user = null;

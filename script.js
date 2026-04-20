@@ -4121,16 +4121,17 @@ function getEffectiveUserProfile(user) {
 
   var merged = Object.assign({}, user);
   var storedSettings = readStoredUserSettings();
+  var isGuestUser = merged.provider === "guest";
 
-  if (storedSettings.displayName) {
+  if (isGuestUser && storedSettings.displayName) {
     merged.displayName = storedSettings.displayName;
   }
 
-  if (storedSettings.avatarUrl) {
+  if (isGuestUser && storedSettings.avatarUrl) {
     merged.avatarUrl = storedSettings.avatarUrl;
   }
 
-  if (storedSettings.theme) {
+  if (isGuestUser && storedSettings.theme) {
     merged.theme = storedSettings.theme;
   }
 

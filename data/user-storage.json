@@ -1,0 +1,387 @@
+{
+  "google:113777326243899268588": {
+    "arrays": {
+      "actionflow_archivio_azioni": [
+        {
+          "id": "azione_chiamare_marco",
+          "testo": "Chiamare Marco",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": "10:00",
+          "durataStimataMinuti": 10,
+          "energiaStimata": "bassa",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "completato": false,
+          "completedAt": null,
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "id": "azione_pagare_una_fattura",
+          "testo": "Pagare una fattura",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": null,
+          "durataStimataMinuti": 10,
+          "energiaStimata": "bassa",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "completato": false,
+          "completedAt": null,
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "id": "azione_finire_il_report",
+          "testo": "Finire il report",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": null,
+          "durataStimataMinuti": 90,
+          "energiaStimata": "alta",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "completato": false,
+          "completedAt": null,
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "id": "azione_andare_in_palestra",
+          "testo": "Andare in palestra",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": "16:00",
+          "durataStimataMinuti": 60,
+          "energiaStimata": "media",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "completato": false,
+          "completedAt": null,
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "id": "azione_prenotare_il_dentista",
+          "testo": "Prenotare il dentista",
+          "priorita": "alta",
+          "scadenzaOriginale": "domani",
+          "dataISO": "2026-04-18",
+          "time": null,
+          "durataStimataMinuti": 10,
+          "energiaStimata": "bassa",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "completato": false,
+          "completedAt": null,
+          "userId": "google:113777326243899268588"
+        }
+      ],
+      "actionflow_archivio_scadenze": [
+        {
+          "testo": "Chiamare Marco",
+          "data": "oggi",
+          "dataRisolta": "2026-04-16",
+          "aggiunta": "2026-04-16T21:07:50.476Z",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Chiamare Marco",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Pagare una fattura",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Finire il report",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Andare in palestra",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Prenotare il dentista",
+          "data": "domani",
+          "dataRisolta": "2026-04-18",
+          "aggiunta": "2026-04-17T08:45:28.779Z",
+          "userId": "google:113777326243899268588"
+        }
+      ],
+      "actionflow_checklist": [
+        {
+          "testo": "Chiamare Marco",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": "10:00",
+          "durataStimataMinuti": 10,
+          "energiaStimata": "bassa",
+          "completato": false,
+          "completedAt": null,
+          "aggiunta": null,
+          "id": null,
+          "userId": "google:113777326243899268588",
+          "syncedToCalendar": false
+        },
+        {
+          "testo": "Pagare una fattura",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": null,
+          "durataStimataMinuti": 10,
+          "energiaStimata": "bassa",
+          "completato": false,
+          "completedAt": null,
+          "aggiunta": null,
+          "id": null,
+          "userId": "google:113777326243899268588",
+          "syncedToCalendar": false
+        },
+        {
+          "testo": "Finire il report",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": null,
+          "durataStimataMinuti": 90,
+          "energiaStimata": "alta",
+          "completato": false,
+          "completedAt": null,
+          "aggiunta": null,
+          "id": null,
+          "userId": "google:113777326243899268588",
+          "syncedToCalendar": false
+        },
+        {
+          "testo": "Andare in palestra",
+          "priorita": "alta",
+          "scadenzaOriginale": "oggi",
+          "dataISO": "2026-04-17",
+          "time": "16:00",
+          "durataStimataMinuti": 60,
+          "energiaStimata": "media",
+          "completato": false,
+          "completedAt": null,
+          "aggiunta": null,
+          "id": null,
+          "userId": "google:113777326243899268588",
+          "syncedToCalendar": false
+        },
+        {
+          "testo": "Prenotare il dentista",
+          "priorita": "alta",
+          "scadenzaOriginale": "domani",
+          "dataISO": "2026-04-18",
+          "time": null,
+          "durataStimataMinuti": 10,
+          "energiaStimata": "bassa",
+          "completato": false,
+          "completedAt": null,
+          "aggiunta": null,
+          "id": null,
+          "userId": "google:113777326243899268588",
+          "syncedToCalendar": false
+        }
+      ],
+      "actionflow_scadenze": [
+        {
+          "testo": "Chiamare Marco",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Pagare una fattura",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Finire il report",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Andare in palestra",
+          "data": "oggi",
+          "dataRisolta": "2026-04-17",
+          "userId": "google:113777326243899268588"
+        },
+        {
+          "testo": "Prenotare il dentista",
+          "data": "domani",
+          "dataRisolta": "2026-04-18",
+          "userId": "google:113777326243899268588"
+        }
+      ]
+    },
+    "scoped": {
+      "actionflow_daily_plan": {
+        "data": "2026-04-17",
+        "mattina": [
+          {
+            "id": "azione_chiamare_marco",
+            "testo": "Chiamare Marco",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": "10:00",
+            "durataStimataMinuti": 10,
+            "energiaStimata": "bassa",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          },
+          {
+            "id": "azione_finire_il_report",
+            "testo": "Finire il report",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": null,
+            "durataStimataMinuti": 90,
+            "energiaStimata": "alta",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          },
+          {
+            "id": "azione_pagare_una_fattura",
+            "testo": "Pagare una fattura",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": null,
+            "durataStimataMinuti": 10,
+            "energiaStimata": "bassa",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          }
+        ],
+        "pomeriggio": [
+          {
+            "id": "azione_andare_in_palestra",
+            "testo": "Andare in palestra",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": "16:00",
+            "durataStimataMinuti": 60,
+            "energiaStimata": "media",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          }
+        ],
+        "restaDaFareOggi": [],
+        "seAvanzaTempo": [
+          {
+            "id": "azione_prenotare_il_dentista",
+            "testo": "Prenotare il dentista",
+            "priorita": "alta",
+            "dataISO": "2026-04-18",
+            "scadenzaOriginale": "domani",
+            "time": null,
+            "durataStimataMinuti": 10,
+            "energiaStimata": "bassa",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          }
+        ],
+        "daFareOggi": [
+          {
+            "id": "azione_chiamare_marco",
+            "testo": "Chiamare Marco",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": "10:00",
+            "durataStimataMinuti": 10,
+            "energiaStimata": "bassa",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          },
+          {
+            "id": "azione_finire_il_report",
+            "testo": "Finire il report",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": null,
+            "durataStimataMinuti": 90,
+            "energiaStimata": "alta",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          },
+          {
+            "id": "azione_pagare_una_fattura",
+            "testo": "Pagare una fattura",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": null,
+            "durataStimataMinuti": 10,
+            "energiaStimata": "bassa",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          },
+          {
+            "id": "azione_andare_in_palestra",
+            "testo": "Andare in palestra",
+            "priorita": "alta",
+            "dataISO": "2026-04-17",
+            "scadenzaOriginale": "oggi",
+            "time": "16:00",
+            "durataStimataMinuti": 60,
+            "energiaStimata": "media",
+            "completato": false,
+            "prioritaFallbackUsata": false,
+            "durataFallbackUsata": false,
+            "energiaFallbackUsata": false
+          }
+        ],
+        "meta": {
+          "taskSignature": "azione_andare_in_palestra|andare in palestra|alta|2026-04-17|16:00|0||azione_chiamare_marco|chiamare marco|alta|2026-04-17|10:00|0||azione_finire_il_report|finire il report|alta|2026-04-17||0||azione_pagare_una_fattura|pagare una fattura|alta|2026-04-17||0||azione_prenotare_il_dentista|prenotare il dentista|alta|2026-04-18||0",
+          "sourceTaskCount": 5
+        },
+        "totali": {
+          "taskConsiderati": 5,
+          "minutiMattina": 110,
+          "minutiPomeriggio": 60,
+          "minutiDaFareOggi": 170,
+          "taskMattina": 3,
+          "taskPomeriggio": 1,
+          "taskRestaDaFareOggi": 0,
+          "taskFuturiMonitorati": 1
+        }
+      },
+      "actionflow_azioni_done": {},
+      "actionflow_checklist_done": {}
+    }
+  }
+}

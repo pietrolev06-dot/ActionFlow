@@ -214,6 +214,92 @@ function salvaAzioniCompletate(completate) {
   window.ActionFlowAuth.writeScopedObject("actionflow_azioni_done", completate);
 }
 
+function readDashboardGuestUser() {
+  try {
+    var raw = localStorage.getItem("actionflow_guest_user");
+    var parsed = raw ? JSON.parse(raw) : null;
+
+    if (!parsed || typeof parsed !== "object" || !parsed.name) {
+      return null;
+    }
+
+    return {
+      id: parsed.id || "guest-local",
+      provider: "guest",
+      providerUserId: parsed.id || "guest-local",
+      name: parsed.name,
+      email: null
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+function getDashboardCurrentUser() {
+  var authUser = window.ActionFlowAuth && typeof window.ActionFlowAuth.getCurrentUser === "function"
+    ? window.ActionFlowAuth.getCurrentUser()
+    : null;
+
+  return authUser || readDashboardGuestUser();
+}
+
+function getDashboardEffectiveUserProfile(user) {
+  if (!user) return null;
+
+  var merged = Object.assign({}, user);
+
+  if (merged.displayName) {
+    merged.name = merged.displayName;
+  }
+
+  if (merged.avatarUrl) {
+    merged.picture = merged.avatarUrl;
+  }
+
+  return merged;
+}
+
+function renderDashboardProfile() {
+  var barra = document.getElementById("barra-profilo-dash");
+  var avatar = document.getElementById("dash-profilo-avatar");
+  var saluto = document.getElementById("dash-profilo-saluto");
+  var titolo = document.getElementById("titolo-dashboard");
+  var effectiveUser = getDashboardEffectiveUserProfile(getDashboardCurrentUser());
+  var displayName = effectiveUser && (effectiveUser.name || effectiveUser.email)
+    ? (effectiveUser.name || effectiveUser.email)
+    : "";
+  var imageUrl = effectiveUser && (effectiveUser.picture || effectiveUser.image || effectiveUser.photoURL || effectiveUser.avatarUrl)
+    ? (effectiveUser.picture || effectiveUser.image || effectiveUser.photoURL || effectiveUser.avatarUrl)
+    : "";
+
+  if (!displayName) {
+    if (barra) barra.classList.add("nascosto");
+    if (titolo) titolo.textContent = "Dashboard";
+    if (avatar) {
+      avatar.textContent = "";
+      avatar.style.backgroundImage = "";
+      avatar.classList.remove("has-image");
+    }
+    if (saluto) saluto.textContent = "";
+    return;
+  }
+
+  if (barra) barra.classList.remove("nascosto");
+  if (titolo) titolo.textContent = "Dashboard di " + displayName;
+  if (saluto) saluto.textContent = "Ciao, " + displayName;
+
+  if (!avatar) return;
+
+  avatar.textContent = displayName.charAt(0).toUpperCase();
+  if (imageUrl) {
+    avatar.style.backgroundImage = 'url("' + imageUrl.replace(/"/g, '\\"') + '")';
+    avatar.classList.add("has-image");
+  } else {
+    avatar.style.backgroundImage = "";
+    avatar.classList.remove("has-image");
+  }
+}
+
 function generaIdAzione(testo) {
   return "azione_" + testo.replace(/[^a-zA-Z0-9\u00C0-\u00FF]/g, "_").toLowerCase();
 }
@@ -1046,26 +1132,7 @@ function inizializzaFiltri() {
 
 document.addEventListener("DOMContentLoaded", function() {
   applyTheme(getStoredThemePreference());
-
-  // Profilo
-  (function() {
-    try {
-      var raw = localStorage.getItem("actionflow_profilo");
-      var profilo = raw ? JSON.parse(raw) : null;
-      if (profilo && profilo.nome) {
-        var barra = document.getElementById("barra-profilo-dash");
-        if (barra) {
-          barra.classList.remove("nascosto");
-          var avatar = document.getElementById("dash-profilo-avatar");
-          var saluto = document.getElementById("dash-profilo-saluto");
-          if (avatar) avatar.textContent = profilo.nome.charAt(0).toUpperCase();
-          if (saluto) saluto.textContent = "Ciao, " + profilo.nome;
-        }
-        var titolo = document.getElementById("titolo-dashboard");
-        if (titolo) titolo.textContent = "Dashboard di " + profilo.nome;
-      }
-    } catch (e) {}
-  })();
+  renderDashboardProfile();
 
   renderDashboardAzioni();
   inizializzaFiltri();
@@ -1092,5 +1159,6 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 window.addEventListener("actionflow-auth-ready", function() {
+  renderDashboardProfile();
   renderDashboardAzioni();
 });
