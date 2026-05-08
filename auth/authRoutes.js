@@ -125,6 +125,8 @@ function createAuthRouter() {
         providerUserId: sessionUser.providerUserId,
         name: sessionUser.name,
         email: sessionUser.email,
+        googleName: sessionUser.googleName || sessionUser.name || null,
+        googlePicture: sessionUser.googlePicture || null,
         displayName: sessionUser.displayName || null,
         avatarUrl: sessionUser.avatarUrl || null,
         theme: sessionUser.theme || "system",
@@ -191,7 +193,12 @@ function createAuthRouter() {
     try {
       const googleAuth = await authenticateWithGoogle(code);
       const user = findOrCreateUser({
-        ...googleAuth.profile,
+        provider: googleAuth.profile.provider,
+        providerUserId: googleAuth.profile.providerUserId,
+        name: googleAuth.profile.name || null,
+        email: googleAuth.profile.email || null,
+        googleName: googleAuth.profile.name || null,
+        googlePicture: googleAuth.profile.avatarUrl || null,
         googleTokens: googleAuth.tokens,
       });
 

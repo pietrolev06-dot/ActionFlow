@@ -9,7 +9,8 @@
   var MIGRATION_SCOPED_KEYS = [
     "actionflow_daily_plan",
     "actionflow_azioni_done",
-    "actionflow_checklist_done"
+    "actionflow_checklist_done",
+    "actionflow_analysis_usage"
   ];
   var USER_STORAGE_SYNC_URL = "/api/user-storage";
   var authState = {
@@ -40,6 +41,10 @@
 
   function getCurrentUser() {
     return authState.user;
+  }
+
+  function getCurrentUserPlan() {
+    return authState.user && authState.user.plan === "pro" ? "pro" : "free";
   }
 
   function readOwnerAliases() {
@@ -122,7 +127,7 @@
   }
 
   function shouldSyncWithServer() {
-    return !!(authState.user && getCurrentUserId());
+    return !!(authState.user && getCurrentUserId() && getCurrentUserPlan() === "pro");
   }
 
   function isManagedArrayKey(baseKey) {

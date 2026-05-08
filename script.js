@@ -5,8 +5,7 @@
     ["drop2action_scadenze", "actionflow_scadenze"],
     ["drop2action_archivio_azioni", "actionflow_archivio_azioni"],
     ["drop2action_archivio_scadenze", "actionflow_archivio_scadenze"],
-    ["drop2action_azioni_done", "actionflow_azioni_done"],
-    ["drop2action_profilo", "actionflow_profilo"]
+    ["drop2action_azioni_done", "actionflow_azioni_done"]
   ];
   for (var i = 0; i < mappa.length; i++) {
     var vecchia = mappa[i][0], nuova = mappa[i][1];
@@ -30,7 +29,7 @@ var voiceStoppingManually = false;
 var voiceStatus = "idle";
 var DAILY_PLAN_STORAGE_KEY = "actionflow_daily_plan";
 var DAILY_PLAN_DEFAULT_DURATION = 30;
-var DAILY_PLAN_MAX_TASKS = 4;
+var DAILY_PLAN_MAX_TASKS = 5;
 var DAILY_PLAN_MAX_SLOT_MINUTES = 180;
 var DAILY_PLAN_DEBUG = true;
 var ANALYSIS_PREVIEW_MAX_ITEMS = 6;
@@ -240,12 +239,39 @@ function countDailyPlanTasks(plan) {
   };
 }
 
+function getIncompletePlanTasks(tasks) {
+  var list = Array.isArray(tasks) ? tasks : [];
+  return list.filter(function(task) {
+    return !(task && task.completato === true);
+  });
+}
+
+function computeDailyPlanTotals(plan) {
+  var sezioni = getDailyPlanSections(plan);
+  var mattinaAttive = getIncompletePlanTasks(sezioni.mattina);
+  var pomeriggioAttive = getIncompletePlanTasks(sezioni.pomeriggio);
+  var restaAttive = getIncompletePlanTasks(sezioni.restaDaFareOggi);
+  var extraAttive = getIncompletePlanTasks(sezioni.seAvanzaTempo);
+  var minutiMattina = getPlanSlotMinutes(mattinaAttive);
+  var minutiPomeriggio = getPlanSlotMinutes(pomeriggioAttive);
+
+  return {
+    taskConsiderati: mattinaAttive.length + pomeriggioAttive.length + restaAttive.length + extraAttive.length,
+    minutiMattina: minutiMattina,
+    minutiPomeriggio: minutiPomeriggio,
+    minutiDaFareOggi: minutiMattina + minutiPomeriggio,
+    taskMattina: mattinaAttive.length,
+    taskPomeriggio: pomeriggioAttive.length,
+    taskRestaDaFareOggi: restaAttive.length,
+    taskFuturiMonitorati: plan && plan.totali && typeof plan.totali.taskFuturiMonitorati === "number" ? plan.totali.taskFuturiMonitorati : 0
+  };
+}
+
 function normalizeDailyPlan(plan) {
   if (!plan || typeof plan !== "object") return null;
 
   var sezioni = getDailyPlanSections(plan);
-  var minutiMattina = getPlanSlotMinutes(sezioni.mattina);
-  var minutiPomeriggio = getPlanSlotMinutes(sezioni.pomeriggio);
+  var totali = computeDailyPlanTotals(plan);
 
   return {
     data: plan.data || formatISO(inizioOggiLocale()),
@@ -258,16 +284,7 @@ function normalizeDailyPlan(plan) {
       taskSignature: plan.meta.taskSignature || "",
       sourceTaskCount: typeof plan.meta.sourceTaskCount === "number" ? plan.meta.sourceTaskCount : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.restaDaFareOggi.length + sezioni.seAvanzaTempo.length
     } : null,
-    totali: {
-      taskConsiderati: plan.totali && typeof plan.totali.taskConsiderati === "number" ? plan.totali.taskConsiderati : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.restaDaFareOggi.length + sezioni.seAvanzaTempo.length,
-      minutiMattina: minutiMattina,
-      minutiPomeriggio: minutiPomeriggio,
-      minutiDaFareOggi: minutiMattina + minutiPomeriggio,
-      taskMattina: sezioni.mattina.length,
-      taskPomeriggio: sezioni.pomeriggio.length,
-      taskRestaDaFareOggi: sezioni.restaDaFareOggi.length,
-      taskFuturiMonitorati: plan.totali && typeof plan.totali.taskFuturiMonitorati === "number" ? plan.totali.taskFuturiMonitorati : 0
-    }
+    totali: totali
   };
 }
 
@@ -958,7 +975,110 @@ function getSavedTasksForPlanning() {
     }
   } catch (e) {}
 
-  return tasks;
+  return tasks.concat(getTodayHabitsForPlanning());
+}
+
+function getHabitEnergyForPlanning(habit) {
+  var importance = habit && habit.importance ? habit.importance : "media";
+  if (habit && habit.energyLevel) return habit.energyLevel;
+  if (importance === "alta") return "media";
+  if (importance === "bassa") return "bassa";
+  return "media";
+}
+
+function estimateHabitPlanningDetails(habit) {
+  var title = normalizeText(habit && habit.title ? habit.title : "");
+  var importance = habit && habit.importance ? habit.importance : "media";
+  var estimate = {
+    duration: 30,
+    energy: getHabitEnergyForPlanning(habit),
+    preferredSlot: null
+  };
+
+  if (/studiare|studio|analisi|leggere|ripassare|scrivere|progetto|preparare|presentazione|slide|corso|lezione|deep\s*work|focus/.test(title)) {
+    estimate.duration = importance === "alta" ? 90 : 60;
+    estimate.energy = "alta";
+    estimate.preferredSlot = "pomeriggio";
+  } else if (/allen|palestra|corsa|correre|yoga|cammin|workout|sport/.test(title)) {
+    estimate.duration = 45;
+    estimate.energy = "media";
+    estimate.preferredSlot = "pomeriggio";
+  } else if (/cane|spesa|comprare|portare|ritirare|pagare|chiamare|messaggio|email|acqua|medicine|farmac|riordinare|pulire/.test(title)) {
+    estimate.duration = 15;
+    estimate.energy = "bassa";
+  } else if (importance === "alta") {
+    estimate.duration = 45;
+    estimate.energy = estimate.energy === "bassa" ? "media" : estimate.energy;
+  } else if (importance === "bassa") {
+    estimate.duration = 15;
+    estimate.energy = "bassa";
+  }
+
+  return estimate;
+}
+
+function getTodayHabitsForPlanning() {
+  if (!window.ActionFlowHabits) {
+    return [];
+  }
+
+  try {
+    var today = formatISO(inizioOggiLocale());
+    var habits = typeof window.ActionFlowHabits.readHabits === "function"
+      ? window.ActionFlowHabits.readHabits(today)
+      : (typeof window.ActionFlowHabits.getHabitsForToday === "function" ? window.ActionFlowHabits.getHabitsForToday(today) : []);
+    var entries = [];
+
+    for (var i = 0; i < habits.length; i++) {
+      var habit = habits[i];
+      if (!habit || !habit.title) continue;
+
+      var estimated = estimateHabitPlanningDetails(habit);
+      var actualDueToday = typeof window.ActionFlowHabits.isHabitActiveOnDate === "function"
+        ? window.ActionFlowHabits.isHabitActiveOnDate(habit, today)
+        : true;
+      var flexibleOccurrence = actualDueToday !== true;
+      if (flexibleOccurrence && habit.frequency !== "weekly") {
+        continue;
+      }
+      var rawFixedTime = habit.fixedSchedule ? normalizzaOrario(habit.fixedStartTime) : null;
+      var fixedTime = flexibleOccurrence ? null : rawFixedTime;
+      var duration = normalizzaDurataStimata(
+        habit.fixedSchedule && habit.fixedDurationMinutes
+          ? habit.fixedDurationMinutes
+          : (habit.estimatedDurationManual === true ? habit.estimatedDurationMinutes : estimated.duration)
+      ) || estimated.duration || DAILY_PLAN_DEFAULT_DURATION;
+
+      entries.push({
+        id: "habit:" + habit.id,
+        habitId: habit.id,
+        isHabit: true,
+        testo: habit.title,
+        priorita: habit.importance || "media",
+        dataISO: today,
+        scadenzaOriginale: "Habit",
+        time: fixedTime,
+        durataStimataMinuti: duration,
+        energiaStimata: habit.energyLevel || estimated.energy,
+        completato: habit.completedToday === true,
+        frequency: habit.frequency || "daily",
+        daysOfWeek: Array.isArray(habit.daysOfWeek) ? habit.daysOfWeek.slice() : [],
+        lastCompletedAt: habit.lastCompletedAt || null,
+        createdAt: habit.createdAt || null,
+        selectedWeekday: typeof habit.selectedWeekday === "number" ? habit.selectedWeekday : null,
+        actualDueToday: actualDueToday === true,
+        flexibleOccurrence: flexibleOccurrence,
+        fixedSchedule: habit.fixedSchedule === true && !flexibleOccurrence,
+        preferredSlot: fixedTime || flexibleOccurrence ? "pomeriggio" : estimated.preferredSlot,
+        autoEstimated: habit.estimatedDurationManual !== true && !habit.energyLevel && !fixedTime,
+        recurringLabel: flexibleOccurrence ? "Anticipabile" : "Habit"
+      });
+    }
+
+    return entries;
+  } catch (e) {
+    return [];
+  }
 }
 
 function getDynamicPriority(task) {
@@ -974,7 +1094,7 @@ function logDailyPlanDebug(task, reason, details) {
     ? (details.motivo || details.info || details)
     : (details || null);
 
-  console.log("[ActionFlow][OrganizzaGiornata]", {
+  console.log("[FloMind][OrganizzaGiornata]", {
     testo: task && task.testo ? task.testo : "",
     dataISO: task && task.dataISO ? task.dataISO : null,
     time: task && task.time ? task.time : null,
@@ -1105,7 +1225,6 @@ function getSlotConstraintReason(task, slotName, planSections) {
   var durataTask = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
   var highEnergyCount = getHighEnergyCountForSlot(slotTasks);
 
-  if (giorni === 1) return "task_di_domani_riservato_a_extra";
   if (slotMinutes + durataTask > DAILY_PLAN_MAX_SLOT_MINUTES) return "slot_oltre_180_minuti";
   if (task.energiaStimata === "alta" && highEnergyCount >= 1) return "slot_ha_gia_un_task_alta_energia";
 
@@ -1183,6 +1302,80 @@ function getTimeBasedSlotHint(task) {
   return null;
 }
 
+function isPlannerHabit(task) {
+  return !!(task && task.isHabit === true);
+}
+
+function isFlexiblePlannerHabit(task) {
+  return !!(isPlannerHabit(task) && task.flexibleOccurrence === true);
+}
+
+function normalizePlannerWeekday(value) {
+  var normalized = Number(value);
+  return Number.isFinite(normalized) && normalized >= 0 && normalized <= 6 ? Math.round(normalized) : null;
+}
+
+function getPlannerHabitCreationWeekday(task) {
+  var createdAt = task && task.createdAt ? new Date(task.createdAt) : null;
+  return createdAt && !isNaN(createdAt.getTime()) ? createdAt.getDay() : inizioOggiLocale().getDay();
+}
+
+function isPlannerHabitDueToday(task) {
+  var frequency = task && task.frequency ? task.frequency : null;
+  var todayWeekday = inizioOggiLocale().getDay();
+  var selectedWeekday;
+  var daysOfWeek;
+
+  if (!isPlannerHabit(task) || !frequency) return true;
+  if (frequency === "daily") return true;
+
+  if (frequency === "specific_weekdays") {
+    daysOfWeek = Array.isArray(task.daysOfWeek) ? task.daysOfWeek.map(normalizePlannerWeekday) : [];
+    return daysOfWeek.indexOf(todayWeekday) !== -1;
+  }
+
+  if (frequency === "weekly") {
+    selectedWeekday = normalizePlannerWeekday(task.selectedWeekday);
+    if (selectedWeekday === null) selectedWeekday = getPlannerHabitCreationWeekday(task);
+    return selectedWeekday === todayWeekday;
+  }
+
+  return true;
+}
+
+function isPlannerTaskEligibleForToday(task) {
+  var giorni;
+
+  if (!task || !task.testo || task.completato === true) {
+    return false;
+  }
+
+  if (isPlannerHabit(task)) {
+    if (!isPlannerHabitDueToday(task)) {
+      if (task.frequency !== "weekly") {
+        return false;
+      }
+      task.actualDueToday = false;
+      task.flexibleOccurrence = true;
+      task.recurringLabel = task.recurringLabel || "Anticipabile";
+      if (!task.preferredSlot) task.preferredSlot = "pomeriggio";
+      task.fixedSchedule = false;
+      task.time = null;
+    } else if (task.flexibleOccurrence !== true) {
+      task.actualDueToday = true;
+      task.recurringLabel = task.recurringLabel || "Habit";
+    }
+    return true;
+  }
+
+  giorni = getTaskDaysFromToday(task.dataISO || null);
+  return giorni === null || giorni <= 0;
+}
+
+function isFixedPlannerHabit(task) {
+  return !!(isPlannerHabit(task) && task.fixedSchedule === true && getTaskTimeMinutes(task) !== null);
+}
+
 function getTaskForcedSlot(task) {
   var explicitHint = getExplicitSlotHint(task);
   var timeHint = getTimeBasedSlotHint(task);
@@ -1195,8 +1388,20 @@ function isTimeConstrainedTodayTask(task) {
   var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
 
   if (!getTimeBasedSlotHint(task) || hasVagueDeadline(task)) return false;
-  if (giorni !== null && giorni > 0) return false;
+  if (giorni !== null && giorni > 1) return false;
   return true;
+}
+
+function isPlanningDateTask(task) {
+  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+
+  if (hasVagueDeadline(task)) return false;
+  return giorni !== null && giorni <= 1;
+}
+
+function isUndatedTask(task) {
+  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+  return giorni === null || hasVagueDeadline(task);
 }
 
 function isConcreteShortDeadlineTask(task) {
@@ -1327,6 +1532,65 @@ function sortTasksWithinSlot(tasks, slotName) {
   });
 }
 
+function getHabitPlanningWeight(task) {
+  var priority = livelloPriorita(task && task.priorita ? task.priorita : "media");
+  var duration = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
+  var durationFit = duration <= 30 ? 2 : (duration <= 60 ? 1 : 0);
+  return (priority * 10) + durationFit;
+}
+
+function getPlannerEntryRank(task) {
+  if (isFixedPlannerHabit(task)) return 0;
+  if (!isPlannerHabit(task) && getTaskTimeMinutes(task) !== null) return 1;
+  if (!isPlannerHabit(task)) return 2;
+  if (isFlexiblePlannerHabit(task)) return 5;
+  if ((task.priorita || "media") === "alta") return 3;
+  if ((task.priorita || "media") === "media") return 4;
+  return 6;
+}
+
+function sortTasksWithHabitsForDailyPlan(tasks) {
+  return tasks.slice().sort(function(a, b) {
+    var rankA = getPlannerEntryRank(a);
+    var rankB = getPlannerEntryRank(b);
+    var timeA = getTaskTimeMinutes(a);
+    var timeB = getTaskTimeMinutes(b);
+
+    if (rankA !== rankB) return rankA - rankB;
+
+    if (timeA !== null || timeB !== null) {
+      if (timeA === null) return 1;
+      if (timeB === null) return -1;
+      if (timeA !== timeB) return timeA - timeB;
+    }
+
+    if (isPlannerHabit(a) || isPlannerHabit(b)) {
+      var habitWeightA = isPlannerHabit(a) ? getHabitPlanningWeight(a) : 99;
+      var habitWeightB = isPlannerHabit(b) ? getHabitPlanningWeight(b) : 99;
+      if (habitWeightA !== habitWeightB) return habitWeightB - habitWeightA;
+    }
+
+    var urgencyA = getTaskUrgencyScore(a);
+    var urgencyB = getTaskUrgencyScore(b);
+    if (urgencyA !== urgencyB) return urgencyA - urgencyB;
+
+    return (a && a.testo ? a.testo : "").localeCompare(b && b.testo ? b.testo : "", "it");
+  });
+}
+
+function hasTimedConflictInSlot(task, slotTasks) {
+  var time = getTaskTimeMinutes(task);
+  if (time === null) return false;
+
+  for (var i = 0; i < slotTasks.length; i++) {
+    if (getTaskTimeMinutes(slotTasks[i]) === time) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function sortTodayTasksForPlan(tasks) {
   return tasks.slice().sort(function(a, b) {
     var timeA = getTaskTimeMinutes(a);
@@ -1387,6 +1651,39 @@ function sortPlanSections(planSections) {
   return planSections;
 }
 
+function ensureMinimumMorningAfternoonDistribution(planSections, selectedTasks) {
+  var selectedCount = Array.isArray(selectedTasks) ? selectedTasks.length : 0;
+  var sourceSlot;
+  var targetSlot;
+  var sourceTasks;
+  var moveIndex = -1;
+
+  if (selectedCount < 3) return planSections;
+  if (planSections.mattina.length > 0 && planSections.pomeriggio.length > 0) return planSections;
+
+  sourceSlot = planSections.mattina.length > 0 ? "mattina" : "pomeriggio";
+  targetSlot = sourceSlot === "mattina" ? "pomeriggio" : "mattina";
+  sourceTasks = planSections[sourceSlot];
+
+  for (var i = sourceTasks.length - 1; i >= 0; i--) {
+    if (getTaskForcedSlot(sourceTasks[i]) === sourceSlot) continue;
+    moveIndex = i;
+    break;
+  }
+
+  if (moveIndex < 0 && sourceTasks.length > 1) {
+    moveIndex = sourceTasks.length - 1;
+  }
+
+  if (moveIndex < 0) return planSections;
+
+  var moved = sourceTasks.splice(moveIndex, 1)[0];
+  planSections[targetSlot].push(moved);
+  logDailyPlanDebug(moved, "riequilibrato_piano_principale", { slotFinale: targetSlot, motivo: "distribuzione minima: almeno un task in mattina e pomeriggio" });
+
+  return planSections;
+}
+
 function isAllowedTomorrowExtraTask(task) {
   var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
   if (giorni !== 1) return true;
@@ -1401,9 +1698,19 @@ function getPreferredSlot(task, currentPlan) {
 
   if (forcedSlot) return forcedSlot;
 
+  if (isPlannerHabit(task) && task.preferredSlot && canAddTaskToSlot(task, task.preferredSlot, currentPlan)) {
+    return task.preferredSlot;
+  }
+
+  if (morningCount === 0) return "mattina";
+  if (getPlanSlotMinutes(currentPlan.mattina) < DAILY_PLAN_MAX_SLOT_MINUTES && morningCount < Math.ceil(DAILY_PLAN_MAX_TASKS / 2)) {
+    return "mattina";
+  }
+  if (afternoonCount === 0) return "pomeriggio";
+
   if (task.energiaStimata === "alta") return "mattina";
   if (task.energiaStimata === "media") return "pomeriggio";
-  if (giorni !== null && giorni <= 0) return morningCount <= afternoonCount ? "mattina" : "pomeriggio";
+  if (giorni !== null && giorni <= 1) return morningCount <= afternoonCount ? "mattina" : "pomeriggio";
   return afternoonCount <= morningCount ? "pomeriggio" : "mattina";
 }
 
@@ -1453,211 +1760,105 @@ function chooseSlotForTask(task, planSections) {
 }
 
 function assignPrimaryTasks(tasks) {
+  var hasHabits = Array.isArray(tasks) && tasks.some(function(task) {
+    return isPlannerHabit(task);
+  });
+
+  if (hasHabits) {
+    return assignPrimaryTasksWithHabits(tasks);
+  }
+
   var planSections = {
     mattina: [],
     pomeriggio: []
   };
-  var selectedTasks = [];
-  var blockedUrgentTasks = 0;
-  var deferredTodayTasks = [];
+  var source = Array.isArray(tasks) ? tasks : [];
+  var selectedTasks = source.slice(0, DAILY_PLAN_MAX_TASKS);
+  var splitIndex = Math.ceil(selectedTasks.length / 2);
 
-  function pushDeferredToday(task, reason) {
-    if (!task) return;
-    if (deferredTodayTasks.indexOf(task) === -1) {
-      deferredTodayTasks.push(task);
-      logDailyPlanDebug(task, "rinviato_a_resta_da_fare_oggi", { slotFinale: "restaDaFareOggi", motivo: reason || "task di oggi non entrato nei limiti degli slot" });
-    }
+  planSections.mattina = selectedTasks.slice(0, splitIndex);
+  planSections.pomeriggio = selectedTasks.slice(splitIndex);
+
+  for (var i = 0; i < planSections.mattina.length; i++) {
+    logDailyPlanDebug(planSections.mattina[i], "incluso_nel_piano_principale", { slotFinale: "mattina", motivo: "split bilanciato semplice" });
   }
 
-  function tryReplaceLessImportantTaskForTimed(task, targetSlot) {
-    var slotTasks;
-    var slotMinutes;
-    var durationTask;
-    var taskUrgency;
-    var candidateIndex = -1;
-    var candidateUrgency = -Infinity;
-    var candidate;
-    var tempSections;
-
-    if (!targetSlot) return null;
-
-    slotTasks = planSections[targetSlot] || [];
-    if (slotTasks.length === 0) return null;
-
-    slotMinutes = getPlanSlotMinutes(slotTasks);
-    durationTask = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
-    taskUrgency = getTaskUrgencyScore(task);
-
-    for (var i = 0; i < slotTasks.length; i++) {
-      var current = slotTasks[i];
-      var currentUrgency = getTaskUrgencyScore(current);
-      var currentDuration = normalizzaDurataStimata(current && current.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
-
-      if (getTaskTimeMinutes(current) !== null) continue;
-      if (getTaskForcedSlot(current)) continue;
-      if (currentUrgency < taskUrgency) continue;
-      if (slotMinutes - currentDuration + durationTask > DAILY_PLAN_MAX_SLOT_MINUTES) continue;
-
-      if (currentUrgency > candidateUrgency) {
-        candidateUrgency = currentUrgency;
-        candidateIndex = i;
-      }
-    }
-
-    if (candidateIndex < 0) return null;
-
-    candidate = slotTasks[candidateIndex];
-    tempSections = {
-      mattina: planSections.mattina.slice(),
-      pomeriggio: planSections.pomeriggio.slice()
-    };
-
-    tempSections[targetSlot].splice(candidateIndex, 1);
-    if (getSlotConstraintReason(task, targetSlot, tempSections)) return null;
-
-    planSections[targetSlot].splice(candidateIndex, 1, task);
-    var selectedCandidateIndex = selectedTasks.indexOf(candidate);
-    if (selectedCandidateIndex !== -1) selectedTasks.splice(selectedCandidateIndex, 1);
-    selectedTasks.push(task);
-    return candidate;
+  for (var p = 0; p < planSections.pomeriggio.length; p++) {
+    logDailyPlanDebug(planSections.pomeriggio[p], "incluso_nel_piano_principale", { slotFinale: "pomeriggio", motivo: "split bilanciato semplice" });
   }
 
-  function tryAssignFromList(taskList, listName, maxToAssign) {
-    var assignedCount = 0;
-
-    for (var idx = 0; idx < taskList.length; idx++) {
-      var task = taskList[idx];
-      var slotChoice;
-
-      if (typeof maxToAssign === "number" && assignedCount >= maxToAssign) break;
-
-      if (selectedTasks.indexOf(task) !== -1) continue;
-      if (shouldReserveForExtraTime(task)) {
-        logDailyPlanDebug(task, "escluso_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: listName + ": riservato a seAvanzaTempo" });
-        continue;
-      }
-
-      slotChoice = chooseSlotForTask(task, planSections);
-      if (!slotChoice.slot) {
-        var replacedTask = null;
-
-        if (getTaskTimeMinutes(task) !== null) {
-          replacedTask = tryReplaceLessImportantTaskForTimed(task, getTaskForcedSlot(task));
-        }
-
-        if (replacedTask) {
-          assignedCount++;
-          pushDeferredToday(replacedTask, "sostituito da task di oggi con orario vincolato");
-          logDailyPlanDebug(task, "incluso_nel_piano_principale", { slotFinale: getTaskForcedSlot(task), motivo: listName + ": inserito con priorita oraria, sostituito task meno urgente" });
-          continue;
-        }
-
-        if (isUrgentPrimaryTask(task) || isConcreteShortDeadlineTask(task)) {
-          blockedUrgentTasks++;
-        }
-        if (isExactTodayTask(task) || isTimeConstrainedTodayTask(task) || isExplicitTodaySlotTask(task)) {
-          pushDeferredToday(task, listName + ": " + slotChoice.reason);
-          continue;
-        }
-        logDailyPlanDebug(task, "escluso_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: listName + ": " + slotChoice.reason });
-        continue;
-      }
-
-      planSections[slotChoice.slot].push(task);
-      selectedTasks.push(task);
-      assignedCount++;
-      logDailyPlanDebug(task, "incluso_nel_piano_principale", { slotFinale: slotChoice.slot, motivo: listName + ": " + slotChoice.slot + " (" + slotChoice.reason + ")" });
-    }
+  for (var x = DAILY_PLAN_MAX_TASKS; x < source.length; x++) {
+    logDailyPlanDebug(source[x], "overflow_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: "oltre i primi " + DAILY_PLAN_MAX_TASKS + " task" });
   }
-
-  var todayTasks = [];
-  var pastDueTasks = [];
-  var futureMonitoringTasks = [];
-  var supplementalFutureTasks = [];
-  var todayTaskCount = 0;
-
-  for (var i = 0; i < tasks.length; i++) {
-    if (isLowPriorityFlexibleTask(tasks[i])) {
-      logDailyPlanDebug(tasks[i], "escluso_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: "task flessibile o con scadenza vaga: riservato a seAvanzaTempo" });
-      continue;
-    }
-
-    if (isTimeConstrainedTodayTask(tasks[i]) || isExplicitTodaySlotTask(tasks[i]) || isExactTodayTask(tasks[i])) {
-      todayTasks.push(tasks[i]);
-      todayTaskCount++;
-      continue;
-    }
-
-    if (isPastDueTask(tasks[i])) {
-      pastDueTasks.push(tasks[i]);
-      continue;
-    }
-
-    if (isFutureMonitoringTask(tasks[i])) {
-      futureMonitoringTasks.push(tasks[i]);
-
-      if (todayTaskCount < 2 && isImportantAndBriefFutureTask(tasks[i])) {
-        supplementalFutureTasks.push(tasks[i]);
-      } else {
-        logDailyPlanDebug(tasks[i], "escluso_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: "task futuro riservato a seAvanzaTempo" });
-      }
-      continue;
-    }
-
-    logDailyPlanDebug(tasks[i], "escluso_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: "task senza data o non urgente: non entra nel piano principale di oggi" });
-  }
-
-  if (todayTasks.length > 0) {
-    var timedTodayTasks = [];
-    var untimedTodayTasks = [];
-
-    for (var t = 0; t < todayTasks.length; t++) {
-      if (getTaskTimeMinutes(todayTasks[t]) !== null) {
-        timedTodayTasks.push(todayTasks[t]);
-      } else {
-        untimedTodayTasks.push(todayTasks[t]);
-      }
-    }
-
-    timedTodayTasks = sortTodayTasksForPlan(timedTodayTasks);
-    untimedTodayTasks = sortUntimedTodayTasksForPlan(untimedTodayTasks);
-
-    tryAssignFromList(timedTodayTasks, "task_di_oggi_con_orario");
-    tryAssignFromList(untimedTodayTasks, "task_di_oggi_senza_orario");
-
-    if (todayTaskCount < 2 && selectedTasks.length < DAILY_PLAN_MAX_TASKS) {
-      tryAssignFromList(supplementalFutureTasks, "eccezione_task_futuri_importanti", 2 - todayTaskCount);
-    }
-
-    sortPlanSections(planSections);
-
-    return {
-      mattina: planSections.mattina,
-      pomeriggio: planSections.pomeriggio,
-      restaDaFareOggi: sortTodayTasksForPlan(deferredTodayTasks),
-      tasks: selectedTasks,
-      futureMonitoringTasks: futureMonitoringTasks,
-      blockedUrgentTasks: blockedUrgentTasks,
-      minutiMattina: getPlanSlotMinutes(planSections.mattina),
-      minutiPomeriggio: getPlanSlotMinutes(planSections.pomeriggio)
-    };
-  }
-
-  tryAssignFromList(pastDueTasks, "task_scaduti");
-
-  if (selectedTasks.length < DAILY_PLAN_MAX_TASKS && supplementalFutureTasks.length > 0) {
-    tryAssignFromList(supplementalFutureTasks, "eccezione_task_futuri_importanti", 2);
-  }
-
-  sortPlanSections(planSections);
 
   return {
     mattina: planSections.mattina,
     pomeriggio: planSections.pomeriggio,
-    restaDaFareOggi: sortTodayTasksForPlan(deferredTodayTasks),
+    restaDaFareOggi: [],
     tasks: selectedTasks,
-    futureMonitoringTasks: futureMonitoringTasks,
-    blockedUrgentTasks: blockedUrgentTasks,
+    futureMonitoringTasks: [],
+    blockedUrgentTasks: 0,
+    minutiMattina: getPlanSlotMinutes(planSections.mattina),
+    minutiPomeriggio: getPlanSlotMinutes(planSections.pomeriggio)
+  };
+}
+
+function assignPrimaryTasksWithHabits(tasks) {
+  var planSections = {
+    mattina: [],
+    pomeriggio: []
+  };
+  var source = sortTasksWithHabitsForDailyPlan(Array.isArray(tasks) ? tasks : []);
+  var selectedTasks = [];
+  var deferredTasks = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var task = source[i];
+    var fixedHabit = isFixedPlannerHabit(task);
+    var underMainLimit = selectedTasks.length < DAILY_PLAN_MAX_TASKS;
+    var lowHabitOverflow = isPlannerHabit(task) && task.priorita === "bassa" && !fixedHabit && selectedTasks.length >= 3;
+
+    if (!fixedHabit && (!underMainLimit || lowHabitOverflow)) {
+      deferredTasks.push(task);
+      logDailyPlanDebug(task, "overflow_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: isPlannerHabit(task) ? "habit flessibile a bassa priorita" : "oltre i primi " + DAILY_PLAN_MAX_TASKS + " task" });
+      continue;
+    }
+
+    var chosen = chooseSlotForTask(task, planSections);
+    if (!chosen.slot && fixedHabit) {
+      chosen = {
+        slot: getTaskForcedSlot(task),
+        reason: "habit_fissa_riserva_orario"
+      };
+    }
+
+    if (!chosen.slot) {
+      deferredTasks.push(task);
+      logDailyPlanDebug(task, "rinviato_per_vincoli_slot", { slotFinale: "seAvanzaTempo", motivo: chosen.reason });
+      continue;
+    }
+
+    if (!fixedHabit && hasTimedConflictInSlot(task, planSections[chosen.slot])) {
+      deferredTasks.push(task);
+      logDailyPlanDebug(task, "rinviato_per_conflitto_orario", { slotFinale: "seAvanzaTempo", motivo: "slot gia riservato allo stesso orario" });
+      continue;
+    }
+
+    planSections[chosen.slot].push(task);
+    selectedTasks.push(task);
+    logDailyPlanDebug(task, "incluso_nel_piano_principale", { slotFinale: chosen.slot, motivo: chosen.reason });
+  }
+
+  planSections = sortPlanSections(planSections);
+
+  return {
+    mattina: planSections.mattina,
+    pomeriggio: planSections.pomeriggio,
+    restaDaFareOggi: [],
+    tasks: selectedTasks,
+    futureMonitoringTasks: [],
+    blockedUrgentTasks: 0,
+    deferredTasks: deferredTasks,
     minutiMattina: getPlanSlotMinutes(planSections.mattina),
     minutiPomeriggio: getPlanSlotMinutes(planSections.pomeriggio)
   };
@@ -1665,77 +1866,93 @@ function assignPrimaryTasks(tasks) {
 
 function buildExtraTimeTasks(sortedTasks, selectedTasks, deferredTodayTasks) {
   var extra = [];
-  var deferredToday = Array.isArray(deferredTodayTasks) ? deferredTodayTasks : [];
+  var deferred = Array.isArray(deferredTodayTasks) ? deferredTodayTasks : [];
+
+  for (var d = 0; d < deferred.length; d++) {
+    if (extra.indexOf(deferred[d]) === -1) {
+      extra.push(deferred[d]);
+    }
+  }
 
   for (var i = 0; i < sortedTasks.length; i++) {
     var task = sortedTasks[i];
     if (selectedTasks.indexOf(task) !== -1) continue;
+    if (extra.indexOf(task) !== -1) continue;
 
-    if (isExactTodayTask(task) || isTimeConstrainedTodayTask(task) || isExplicitTodaySlotTask(task)) {
-      if (deferredToday.indexOf(task) !== -1) {
-        logDailyPlanDebug(task, "escluso_da_se_avanza_tempo", { slotFinale: "restaDaFareOggi", motivo: "task di oggi mantenuto in resta da fare oggi" });
-      } else {
-        logDailyPlanDebug(task, "escluso_da_se_avanza_tempo", { slotFinale: "restaDaFareOggi", motivo: "task di oggi non puo essere trattato come opzionale" });
-      }
-      continue;
-    }
-
-    var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
-    var urgente = giorni !== null && giorni <= 3;
-    var leggero = isVeryShortTask(task) || getTaskEnergyValue(task.energiaStimata) <= 2;
-    var importante = getDynamicPriority(task) === "alta" || getTaskUrgencyBucket(task) <= 3;
-
-    if (isLowPriorityFlexibleTask(task)) {
-      extra.push(task);
-      logDailyPlanDebug(task, "incluso_in_se_avanza_tempo", { slotFinale: "seAvanzaTempo", motivo: "task con scadenza vaga o bassa priorita flessibile" });
-      continue;
-    }
-
-    if (isFutureMonitoringTask(task)) {
-      if (canFutureTaskAppearToday(task) && (giorni !== 1 || isAllowedTomorrowExtraTask(task))) {
-        extra.push(task);
-        logDailyPlanDebug(task, "incluso_in_se_avanza_tempo", { slotFinale: "seAvanzaTempo", motivo: "task futuro ma preparatorio o utile in anticipo" });
-      } else {
-        logDailyPlanDebug(task, "escluso_dal_piano", { slotFinale: "seAvanzaTempo", motivo: "task futuro monitorato, non utile oggi" });
-      }
-      continue;
-    }
-
-    if (urgente || leggero || importante || isPreparatoryTask(task)) {
-      if (giorni !== 1 || isAllowedTomorrowExtraTask(task)) {
-        extra.push(task);
-        logDailyPlanDebug(task, "incluso_in_se_avanza_tempo", { slotFinale: "seAvanzaTempo", motivo: "task leggero, utile o preparatorio" });
-      } else {
-        logDailyPlanDebug(task, "escluso_dal_piano", { slotFinale: "seAvanzaTempo", motivo: "task di domani non abbastanza breve o preparatorio" });
-      }
-    } else {
-      logDailyPlanDebug(task, "escluso_dal_piano", { slotFinale: "seAvanzaTempo", motivo: "task non essenziale per oggi" });
-    }
+    extra.push(task);
+    logDailyPlanDebug(task, "incluso_in_se_avanza_tempo", { slotFinale: "seAvanzaTempo", motivo: "overflow oltre i primi " + DAILY_PLAN_MAX_TASKS + " task" });
   }
 
   return extra;
+}
+
+function getDailyPlanDateBucket(task) {
+  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+
+  if (giorni === null) return "senza_data";
+  if (giorni < 0) return "scaduti";
+  if (giorni === 0) return "oggi";
+  if (giorni === 1) return "domani";
+  return "futuri";
+}
+
+function logDailyPlanDistribution(tasks, planSections) {
+  if (!DAILY_PLAN_DEBUG) return;
+
+  var byDate = {
+    scaduti: [],
+    oggi: [],
+    domani: [],
+    futuri: [],
+    senza_data: []
+  };
+  var source = Array.isArray(tasks) ? tasks : [];
+
+  for (var i = 0; i < source.length; i++) {
+    var bucket = getDailyPlanDateBucket(source[i]);
+    if (!byDate[bucket]) byDate[bucket] = [];
+    byDate[bucket].push(source[i] && source[i].testo ? source[i].testo : "");
+  }
+
+  console.log("[FloMind][OrganizzaGiornata] tasks by date", byDate);
+  console.log("[FloMind][OrganizzaGiornata] assigned sections", {
+    mattina: (planSections.mattina || []).map(function(task) { return task.testo; }),
+    pomeriggio: (planSections.pomeriggio || []).map(function(task) { return task.testo; }),
+    restaDaFareOggi: (planSections.restaDaFareOggi || []).map(function(task) { return task.testo; }),
+    seAvanzaTempo: (planSections.seAvanzaTempo || []).map(function(task) { return task.testo; })
+  });
 }
 
 function buildSmartDailyPlan(tasks) {
   var pendenti = [];
 
   if (DAILY_PLAN_DEBUG) {
-    console.log("[ActionFlow][OrganizzaGiornata] Inizio buildSmartDailyPlan", {
+    console.log("[FloMind][OrganizzaGiornata] Inizio buildSmartDailyPlan", {
       totaleTaskRicevuti: Array.isArray(tasks) ? tasks.length : 0,
       dataOggi: formatISO(inizioOggiLocale())
     });
   }
 
   for (var i = 0; i < tasks.length; i++) {
-    if (!tasks[i].completato) {
-      pendenti.push(tasks[i]);
-      logDailyPlanDebug(tasks[i], "candidato", "task non completato considerato per il piano");
-    } else {
-      logDailyPlanDebug(tasks[i], "escluso_dal_piano", "task completato");
+    if (!tasks[i] || !tasks[i].testo) {
+      continue;
     }
+
+    if (tasks[i].completato) {
+      logDailyPlanDebug(tasks[i], "escluso_dal_piano", "task completato");
+      continue;
+    }
+
+    if (!isPlannerTaskEligibleForToday(tasks[i])) {
+      logDailyPlanDebug(tasks[i], "escluso_dal_piano", "task futuro o habit non dovuta oggi");
+      continue;
+    }
+
+    pendenti.push(tasks[i]);
+    logDailyPlanDebug(tasks[i], "candidato", "task dovuto oggi considerato per il piano");
   }
 
-  var ordinati = sortTasksForDailyPlan(pendenti);
+  var ordinati = pendenti.slice();
   var scelta = assignPrimaryTasks(ordinati);
   var planSections = {
     mattina: scelta.mattina.slice(),
@@ -1744,7 +1961,7 @@ function buildSmartDailyPlan(tasks) {
     seAvanzaTempo: []
   };
 
-  planSections.seAvanzaTempo = buildExtraTimeTasks(ordinati, scelta.tasks, planSections.restaDaFareOggi);
+  planSections.seAvanzaTempo = buildExtraTimeTasks(ordinati, scelta.tasks, scelta.deferredTasks || planSections.restaDaFareOggi);
 
   if (scelta.tasks.length === 0 && planSections.seAvanzaTempo.length === 0 && planSections.restaDaFareOggi.length === 0 && ordinati.length > 0) {
     var rescueTask = ordinati[0];
@@ -1760,7 +1977,8 @@ function buildSmartDailyPlan(tasks) {
   }
 
   if (DAILY_PLAN_DEBUG) {
-    console.log("[ActionFlow][OrganizzaGiornata] Fine buildSmartDailyPlan", {
+    logDailyPlanDistribution(ordinati, planSections);
+    console.log("[FloMind][OrganizzaGiornata] Fine buildSmartDailyPlan", {
       taskPrincipali: scelta.tasks.length,
       taskMattina: planSections.mattina.length,
       taskPomeriggio: planSections.pomeriggio.length,
@@ -1809,6 +2027,9 @@ function getDailyPlanTaskSignature(tasks) {
       task.priorita || "bassa",
       task.dataISO || "",
       task.time || "",
+      task.durataStimataMinuti || "",
+      task.isHabit ? "habit" : "task",
+      task.habitId || "",
       task.completato ? "1" : "0"
     ].join("|"));
   }
@@ -1855,7 +2076,7 @@ function saveDailyPlan(plan, sourceTasks) {
   window.ActionFlowAuth.writeScopedObject(DAILY_PLAN_STORAGE_KEY, normalizedPlan);
 
   if (DAILY_PLAN_DEBUG) {
-    console.log("[ActionFlow][OrganizzaGiornata] saveDailyPlan", countDailyPlanTasks(normalizedPlan));
+    console.log("[FloMind][OrganizzaGiornata] saveDailyPlan", countDailyPlanTasks(normalizedPlan));
   }
 
   return normalizedPlan;
@@ -1867,7 +2088,7 @@ function loadDailyPlan() {
     var plan = rawPlan && Object.keys(rawPlan).length ? normalizeDailyPlan(rawPlan) : null;
 
     if (DAILY_PLAN_DEBUG && plan) {
-      console.log("[ActionFlow][OrganizzaGiornata] loadDailyPlan", countDailyPlanTasks(plan));
+      console.log("[FloMind][OrganizzaGiornata] loadDailyPlan", countDailyPlanTasks(plan));
     }
 
     return plan;
@@ -1931,19 +2152,234 @@ function renderDailyPlanTasks(listId, tasks) {
     var task = tasks[i];
     var li = document.createElement("li");
     li.className = "piano-task-item priorita-" + (task.priorita || "bassa");
+    if (isPlannerHabit(task)) {
+      li.classList.add("piano-habit-item");
+      if (isFlexiblePlannerHabit(task)) {
+        li.classList.add("piano-habit-flexible");
+      }
+    }
+    if (task.completato === true) {
+      li.classList.add("planner-task-completed");
+    }
+
+    appendPlannerCompletionControl(li, task);
 
     var testo = document.createElement("div");
     testo.className = "piano-task-testo";
-    testo.textContent = task.testo;
+
+    if (isPlannerHabit(task)) {
+      if (task.time) {
+        var time = document.createElement("span");
+        time.className = "piano-habit-time";
+        time.textContent = task.time + " • ";
+        testo.appendChild(time);
+      }
+
+      testo.appendChild(document.createTextNode(task.testo));
+
+      var label = document.createElement("span");
+      label.className = "piano-habit-label";
+      if (isFlexiblePlannerHabit(task)) {
+        label.classList.add("piano-habit-label-flexible");
+      }
+      label.textContent = "↻ " + (task.recurringLabel || "Habit");
+      testo.appendChild(label);
+    } else {
+      testo.textContent = task.testo;
+    }
+
     li.appendChild(testo);
 
-    var meta = document.createElement("div");
-    meta.className = "piano-task-meta";
-    appendTaskMeta(meta, task);
-
-    li.appendChild(meta);
     lista.appendChild(li);
   }
+}
+
+function getPlannerTaskCompletionId(task) {
+  if (!task) return null;
+  if (isPlannerHabit(task)) return task.habitId ? "habit:" + task.habitId : null;
+  return task.id || generaIdAzione(task.testo || "");
+}
+
+function updateStoredTaskCompletion(task, completed, completedAt) {
+  if (!task || !task.testo) return;
+
+  var targetId = task.id || generaIdAzione(task.testo || "");
+  var targetText = normalizeText(task.testo || "");
+  var storageKeys = ["actionflow_checklist", "actionflow_archivio_azioni"];
+
+  for (var k = 0; k < storageKeys.length; k++) {
+    try {
+      var items = window.ActionFlowAuth.readOwnedArray(storageKeys[k]);
+      var changed = false;
+
+      if (!Array.isArray(items)) continue;
+
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (!item || !item.testo) continue;
+
+        var itemId = item.id || generaIdAzione(item.testo || "");
+        var sameTask = itemId === targetId || normalizeText(item.testo || "") === targetText;
+        if (!sameTask) continue;
+
+        item.completato = completed === true;
+        item.completedAt = completedAt;
+        changed = true;
+      }
+
+      if (changed) {
+        window.ActionFlowAuth.writeOwnedArray(storageKeys[k], dedupeTasks(items));
+      }
+    } catch (e) {}
+  }
+}
+
+function persistPlannerTaskCompletion(task) {
+  return setPlannerTaskCompletion(task, true);
+}
+
+function setPlannerTaskCompletion(task, completed) {
+  if (!task) return false;
+  var isCompleted = completed === true;
+
+  if (isPlannerHabit(task)) {
+    if (window.ActionFlowHabits && task.habitId) {
+      if (isCompleted && typeof window.ActionFlowHabits.completeHabit === "function") {
+        window.ActionFlowHabits.completeHabit(task.habitId);
+        return true;
+      }
+
+      if (!isCompleted && typeof window.ActionFlowHabits.updateHabit === "function") {
+        window.ActionFlowHabits.updateHabit(task.habitId, {
+          completedToday: false,
+          lastCompletedAt: null
+        });
+        return true;
+      }
+
+      return true;
+    }
+    return false;
+  }
+
+  var id = getPlannerTaskCompletionId(task);
+  if (!id) return false;
+
+  var completedAt = new Date().toISOString();
+  var completate = leggiAzioniCompletate();
+  completate[id] = isCompleted;
+  if (task.testo) {
+    completate[generaIdAzione(task.testo)] = isCompleted;
+  }
+  salvaAzioniCompletate(completate);
+  updateStoredTaskCompletion(task, isCompleted, isCompleted ? completedAt : null);
+  return true;
+}
+
+function isSamePlannerTask(a, b) {
+  if (!a || !b) return false;
+  if (isPlannerHabit(a) || isPlannerHabit(b)) {
+    return !!(a.habitId && b.habitId && a.habitId === b.habitId);
+  }
+
+  var idA = getPlannerTaskCompletionId(a);
+  var idB = getPlannerTaskCompletionId(b);
+  if (idA && idB && idA === idB) return true;
+
+  return !!(a.testo && b.testo && normalizeText(a.testo) === normalizeText(b.testo));
+}
+
+function markTaskCompletionInPlanList(list, task, completed) {
+  if (!Array.isArray(list)) return false;
+  var changed = false;
+
+  for (var i = 0; i < list.length; i++) {
+    if (isSamePlannerTask(list[i], task)) {
+      list[i].completato = completed === true;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function updateDailyPlanCompletionState(task, completed) {
+  var plan = loadDailyPlan();
+  if (!plan || Object.keys(plan).length === 0) {
+    return refreshDailyPlanIfPresent();
+  }
+
+  var sections = getDailyPlanSections(plan);
+  var changed = false;
+  changed = markTaskCompletionInPlanList(sections.mattina, task, completed) || changed;
+  changed = markTaskCompletionInPlanList(sections.pomeriggio, task, completed) || changed;
+  changed = markTaskCompletionInPlanList(sections.restaDaFareOggi, task, completed) || changed;
+  changed = markTaskCompletionInPlanList(sections.seAvanzaTempo, task, completed) || changed;
+
+  if (!changed) {
+    return refreshDailyPlanIfPresent();
+  }
+
+  plan.mattina = sections.mattina;
+  plan.pomeriggio = sections.pomeriggio;
+  plan.restaDaFareOggi = sections.restaDaFareOggi;
+  plan.seAvanzaTempo = sections.seAvanzaTempo;
+  plan.totali = computeDailyPlanTotals(plan);
+  var sourceTasks = getSavedTasksForPlanning();
+  plan.meta = {
+    taskSignature: getDailyPlanTaskSignature(sourceTasks),
+    sourceTaskCount: sourceTasks.length
+  };
+  window.ActionFlowAuth.writeScopedObject(DAILY_PLAN_STORAGE_KEY, plan);
+  renderDailyPlan(plan, false);
+  return plan;
+}
+
+function updatePlannerTaskFromCard(task, card, checkbox, completed) {
+  if (!task) return;
+
+  var persisted = setPlannerTaskCompletion(task, completed);
+  if (!persisted) {
+    if (checkbox) checkbox.checked = !completed;
+    return;
+  }
+
+  task.completato = completed === true;
+  if (card) {
+    card.classList.toggle("planner-task-completed", completed === true);
+  }
+  updateDailyPlanCompletionState(task, completed);
+}
+
+function appendPlannerCompletionControl(card, task) {
+  if (!card || !task) return;
+
+  var wrapper = document.createElement("label");
+  wrapper.className = "planner-complete-control";
+  wrapper.title = "Completa";
+
+  var checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "planner-complete-checkbox";
+  checkbox.checked = task.completato === true;
+  checkbox.setAttribute("aria-label", "Completa " + (task.testo || "task"));
+
+  var visual = document.createElement("span");
+  visual.className = "planner-complete-visual";
+  visual.setAttribute("aria-hidden", "true");
+
+  checkbox.addEventListener("change", function(event) {
+    event.stopPropagation();
+    updatePlannerTaskFromCard(task, card, checkbox, checkbox.checked);
+  });
+
+  wrapper.addEventListener("click", function(event) {
+    event.stopPropagation();
+  });
+
+  wrapper.appendChild(checkbox);
+  wrapper.appendChild(visual);
+  card.appendChild(wrapper);
 }
 
 function getDailyPlanSections(plan) {
@@ -1952,6 +2388,14 @@ function getDailyPlanSections(plan) {
   var pomeriggio = Array.isArray(piano.pomeriggio) ? piano.pomeriggio.slice() : [];
   var restaDaFareOggi = Array.isArray(piano.restaDaFareOggi) ? piano.restaDaFareOggi.slice() : [];
   var seAvanzaTempo = Array.isArray(piano.seAvanzaTempo) ? piano.seAvanzaTempo.slice() : [];
+
+  if (restaDaFareOggi.length === 0 && Array.isArray(piano.restaOggi)) {
+    restaDaFareOggi = piano.restaOggi.slice();
+  }
+
+  if (seAvanzaTempo.length === 0 && Array.isArray(piano.extra)) {
+    seAvanzaTempo = piano.extra.slice();
+  }
 
   if (mattina.length === 0 && pomeriggio.length === 0 && restaDaFareOggi.length === 0 && Array.isArray(piano.daFareOggi)) {
     var taskOggi = piano.daFareOggi.slice();
@@ -2035,42 +2479,142 @@ function decorateFocusTask(task, focusBucket, sourceSlot) {
   return decorated;
 }
 
-function getFocusTasks(plan) {
-  var piano = plan || loadDailyPlan() || { mattina: [], pomeriggio: [], restaDaFareOggi: [], seAvanzaTempo: [] };
-  var sezioniPiano = getDailyPlanSections(piano);
-  var mattina = (sezioniPiano.mattina || []).slice();
-  var pomeriggio = (sezioniPiano.pomeriggio || []).slice();
-  var restaDaFareOggi = (sezioniPiano.restaDaFareOggi || []).slice();
-  var extra = (sezioniPiano.seAvanzaTempo || []).slice();
-  var ora = null;
-  var dopo = [];
-  var piuTardiOggi = [];
-  var seAvanzaTempo = extra.slice();
+function getCurrentFocusTimeLabel(now) {
+  return (now || new Date()).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
 
-  if (mattina.length > 0) {
-    ora = decorateFocusTask(mattina[0], "now", "mattina");
-    dopo = mattina.slice(1).map(function(task) {
-      return decorateFocusTask(task, "after_now", "mattina");
-    });
-    piuTardiOggi = sortTodayTasksForPlan(pomeriggio.concat(restaDaFareOggi)).map(function(task) {
-      return decorateFocusTask(task, "later_today", "pomeriggio");
-    });
-  } else if (pomeriggio.length > 0) {
-    ora = decorateFocusTask(pomeriggio[0], "now", "pomeriggio");
-    piuTardiOggi = sortTodayTasksForPlan(pomeriggio.slice(1).concat(restaDaFareOggi)).map(function(task) {
-      return decorateFocusTask(task, "later_today", "pomeriggio");
-    });
-  } else if (restaDaFareOggi.length > 0) {
-    ora = decorateFocusTask(restaDaFareOggi[0], "now", "resta");
-    piuTardiOggi = sortTodayTasksForPlan(restaDaFareOggi.slice(1)).map(function(task) {
-      return decorateFocusTask(task, "later_today", "resta");
-    });
-  } else if (extra.length > 0) {
-    ora = decorateFocusTask(extra[0], "now", "extra");
-    seAvanzaTempo = extra.slice(1);
+function getCurrentFocusPeriod(now) {
+  var date = now || new Date();
+  var hours = date.getHours();
+
+  if (hours < 12) return "mattina";
+  if (hours < 18) return "pomeriggio";
+  return "sera";
+}
+
+function isFocusTaskCompleted(task) {
+  return !!(task && task.completato === true);
+}
+
+function getUnfinishedTasks(tasks) {
+  var source = Array.isArray(tasks) ? tasks : [];
+  return source.filter(function(task) {
+    return task && task.testo && !isFocusTaskCompleted(task);
+  });
+}
+
+function buildFocusTaskEntries(tasks, bucket, sourceSlot) {
+  return getUnfinishedTasks(tasks).map(function(task) {
+    return decorateFocusTask(task, bucket, sourceSlot);
+  });
+}
+
+function getFocusTaskDays(task) {
+  var dataISO = task && task.dataISO ? task.dataISO : (task && task.date ? task.date : null);
+  return getTaskDaysFromToday(dataISO);
+}
+
+function getFocusTargetDays() {
+  return focusDateMode === "tomorrow" ? 1 : 0;
+}
+
+function getFocusEmptyCopy() {
+  if (focusDateMode === "tomorrow") {
+    return {
+      title: "Nessun task per domani",
+      subtitle: ""
+    };
   }
 
   return {
+    title: "Nessun task per oggi",
+    subtitle: "Vuoi iniziare da domani?"
+  };
+}
+
+function isFocusTaskForTargetDate(task, targetDays) {
+  if (!task || hasVagueDeadline(task)) return false;
+  return getFocusTaskDays(task) === targetDays;
+}
+
+function filterFocusTasksForTargetDate(tasks, targetDays) {
+  return getUnfinishedTasks(tasks).filter(function(task) {
+    return isFocusTaskForTargetDate(task, targetDays);
+  });
+}
+
+function getFocusTasks(plan) {
+  var now = new Date();
+  var period = getCurrentFocusPeriod(now);
+  var targetDays = getFocusTargetDays();
+  var piano = plan || loadDailyPlan() || { mattina: [], pomeriggio: [], restaDaFareOggi: [], seAvanzaTempo: [] };
+  var sezioniPiano = getDailyPlanSections(piano);
+  var mattina = filterFocusTasksForTargetDate(sezioniPiano.mattina || [], targetDays);
+  var pomeriggio = filterFocusTasksForTargetDate(sezioniPiano.pomeriggio || [], targetDays);
+  var restaDaFareOggi = filterFocusTasksForTargetDate(sezioniPiano.restaDaFareOggi || [], targetDays);
+  var extra = filterFocusTasksForTargetDate(sezioniPiano.seAvanzaTempo || [], targetDays);
+  var ora = null;
+  var dopo = [];
+  var piuTardiOggi = [];
+  var seAvanzaTempo = [];
+  var orderedSections;
+  var sequence = [];
+
+  if (period === "mattina") {
+    orderedSections = [
+      { key: "mattina", tasks: mattina },
+      { key: "pomeriggio", tasks: pomeriggio },
+      { key: "resta", tasks: restaDaFareOggi },
+      { key: "extra", tasks: extra }
+    ];
+  } else if (period === "pomeriggio") {
+    orderedSections = [
+      { key: "pomeriggio", tasks: pomeriggio },
+      { key: "resta", tasks: restaDaFareOggi },
+      { key: "extra", tasks: extra },
+      { key: "mattina", tasks: mattina }
+    ];
+  } else {
+    orderedSections = [
+      { key: "resta", tasks: restaDaFareOggi },
+      { key: "extra", tasks: extra },
+      { key: "pomeriggio", tasks: pomeriggio },
+      { key: "mattina", tasks: mattina }
+    ];
+  }
+
+  for (var i = 0; i < orderedSections.length; i++) {
+    for (var s = 0; s < orderedSections[i].tasks.length; s++) {
+      sequence.push({
+        task: orderedSections[i].tasks[s],
+        sourceSlot: orderedSections[i].key
+      });
+    }
+  }
+
+  if (sequence.length > 0) {
+    ora = decorateFocusTask(sequence[0].task, "now", sequence[0].sourceSlot);
+  }
+
+  if (sequence.length > 1) {
+    dopo = [decorateFocusTask(sequence[1].task, "after_now", sequence[1].sourceSlot)];
+  }
+
+  console.log("[FloMind][Focus]", {
+    time: getCurrentFocusTimeLabel(now),
+    period: period,
+    dateMode: focusDateMode,
+    currentTask: ora ? ora.testo : null,
+    nextTasksCount: dopo.length
+  });
+
+  return {
+    timeLabel: getCurrentFocusTimeLabel(now),
+    period: period,
+    dateMode: focusDateMode,
     ora: ora,
     dopo: dopo,
     piuTardiOggi: piuTardiOggi,
@@ -2088,6 +2632,15 @@ function renderFocusTaskList(listId, tasks, variant) {
     var task = tasks[i];
     var li = document.createElement("li");
     li.className = "focus-task-item" + (variant === "ora" ? " focus-task-item-now" : "");
+
+    appendPlannerCompletionControl(li, task);
+
+    if (variant === "ora") {
+      var timer = document.createElement("div");
+      timer.className = "focus-task-timer";
+      timer.textContent = getCurrentFocusTimeLabel();
+      li.appendChild(timer);
+    }
 
     var testo = document.createElement("div");
     testo.className = "focus-task-testo";
@@ -2115,10 +2668,28 @@ function renderFocusTaskList(listId, tasks, variant) {
   }
 }
 
+function updateFocusEmptyState(haContenuto) {
+  var emptyState = document.getElementById("focus-empty-state");
+  if (!emptyState) return;
+
+  var copy = getFocusEmptyCopy();
+  var title = emptyState.querySelector("h2");
+  var subtitle = emptyState.querySelector(".page-subtitle");
+  var cta = document.getElementById("btn-focus-start-tomorrow");
+
+  if (title) title.textContent = copy.title;
+  if (subtitle) subtitle.textContent = copy.subtitle;
+  if (cta) cta.classList.toggle("nascosto", focusDateMode !== "today");
+
+  emptyState.classList.toggle("nascosto", haContenuto);
+}
+
 function renderFocus(plan) {
   var focus = getFocusTasks(plan);
   var section = document.getElementById("sezione-focus");
   var summary = document.getElementById("focus-sommario");
+  var nextShell = document.querySelector(".focus-next-shell");
+  var nextHeader = document.querySelector(".focus-next-header");
   var groups = [
     { id: "focus-blocco-ora", listId: "focus-lista-ora", items: focus.ora ? [focus.ora] : [], variant: "ora" },
     { id: "focus-blocco-dopo", listId: "focus-lista-dopo", items: focus.dopo, variant: "dopo" },
@@ -2137,6 +2708,13 @@ function renderFocus(plan) {
     if (visible) visibleCount++;
   }
 
+  if (nextShell) {
+    setVisibility(nextShell, focus.dopo.length > 0, "flex");
+  }
+  if (nextHeader) {
+    setVisibility(nextHeader, focus.dopo.length > 0, "block");
+  }
+
   if (summary) {
     if (focus.ora) {
       summary.textContent = "ORA mostra il prossimo passo immediato, seguito da DOPO e PIÙ TARDI OGGI secondo il piano della giornata.";
@@ -2146,6 +2724,30 @@ function renderFocus(plan) {
   }
 
   setVisibility(section, visibleCount > 0, "block");
+  updateFocusEmptyState(visibleCount > 0);
+}
+
+var focusRefreshIntervalId = null;
+
+function startFocusRefreshInterval() {
+  if (focusRefreshIntervalId) window.clearInterval(focusRefreshIntervalId);
+
+  focusRefreshIntervalId = window.setInterval(function() {
+    var modal = document.getElementById("modal-focus");
+    if (modal && modal.classList.contains("nascosto")) {
+      window.clearInterval(focusRefreshIntervalId);
+      focusRefreshIntervalId = null;
+      return;
+    }
+
+    renderFocus(loadDailyPlan());
+  }, 60000);
+}
+
+function stopFocusRefreshInterval() {
+  if (!focusRefreshIntervalId) return;
+  window.clearInterval(focusRefreshIntervalId);
+  focusRefreshIntervalId = null;
 }
 
 function renderDailyPlan(plan, showEmptyState) {
@@ -2161,7 +2763,9 @@ function renderDailyPlan(plan, showEmptyState) {
     { id: "blocco-se-avanza-tempo", listId: "lista-se-avanza-tempo", items: sezioniPiano.seAvanzaTempo }
   ];
   var haContenuto = false;
-  var taskPianificati = sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length + sezioniPiano.restaDaFareOggi.length;
+  var taskPianificati = normalizedPlan && normalizedPlan.totali
+    ? (normalizedPlan.totali.taskMattina || 0) + (normalizedPlan.totali.taskPomeriggio || 0) + (normalizedPlan.totali.taskRestaDaFareOggi || 0)
+    : getIncompletePlanTasks(sezioniPiano.mattina).length + getIncompletePlanTasks(sezioniPiano.pomeriggio).length + getIncompletePlanTasks(sezioniPiano.restaDaFareOggi).length;
 
   if (!sezione) {
     renderFocus(normalizedPlan);
@@ -2169,7 +2773,7 @@ function renderDailyPlan(plan, showEmptyState) {
   }
 
   if (DAILY_PLAN_DEBUG && normalizedPlan) {
-    console.log("[ActionFlow][OrganizzaGiornata] renderDailyPlan", countDailyPlanTasks(normalizedPlan));
+    console.log("[FloMind][OrganizzaGiornata] renderDailyPlan", countDailyPlanTasks(normalizedPlan));
   }
 
   for (var i = 0; i < blocchi.length; i++) {
@@ -2552,6 +3156,30 @@ function estraiScadenzeDaTesto(testo, regexData) {
   return risultati;
 }
 
+function cloneScadenza(scadenza) {
+  if (!scadenza) return null;
+  return {
+    originale: scadenza.originale || "",
+    dataRisolta: scadenza.dataRisolta || null
+  };
+}
+
+function scegliScadenzaDaPropagare(scadenze) {
+  if (!scadenze || scadenze.length === 0) return null;
+  return cloneScadenza(scadenze[scadenze.length - 1]);
+}
+
+function applicaScadenzaPropagata(scadenzeLocali, scadenzaCorrente) {
+  if (scadenzeLocali && scadenzeLocali.length > 0) {
+    return scadenzeLocali.map(function(scadenza) {
+      return cloneScadenza(scadenza);
+    });
+  }
+
+  var propagata = cloneScadenza(scadenzaCorrente);
+  return propagata ? [propagata] : [];
+}
+
 function pulisciOggettoAzione(oggetto) {
   var testo = oggetto;
   testo = testo.replace(/\s*(,|-)?\s*entro\b.*$/i, "");
@@ -2644,6 +3272,7 @@ function capitalizzaVerbo(token) {
 var REGEX_INTRO_AZIONE = /^(ricordati di|ricordarsi di|ricorda di|non dimenticare di|devo|devi|dobbiamo|bisogna|occorre|si deve|puoi)\s+/i;
 
 var REGEX_RIFERIMENTO_TEMPORALE_INIZIO = /^(?:(?:per|entro)\s+)?(?:oggi|domani|dopodomani|questo weekend|fine settimana|settimana prossima|fine mese|luned[iì]|marted[iì]|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica)\s*,?\s*/i;
+var REGEX_ORARIO_INIZIO = /^alle\s+([01]?\d|2[0-3])(?::([0-5]\d))?\s+/i;
 
 function isSegmentoAzione(segmento) {
   var testo = pulisciConnettoriInutili(segmento);
@@ -2651,6 +3280,7 @@ function isSegmentoAzione(segmento) {
 
   // Rimuove riferimento temporale in apertura (es. "Domani devo...")
   testo = testo.replace(REGEX_RIFERIMENTO_TEMPORALE_INIZIO, "").trim();
+  testo = testo.replace(REGEX_ORARIO_INIZIO, "").trim();
   if (!testo) return false;
 
   // Signal 1: contiene un'introduzione esplicita di task
@@ -2691,6 +3321,7 @@ function estraiAzioneDaParte(parte, oggettoPrecedente) {
 
   // Rimuove riferimento temporale in apertura prima di cercare il verbo
   testoPulito = testoPulito.replace(REGEX_RIFERIMENTO_TEMPORALE_INIZIO, "").trim();
+  testoPulito = testoPulito.replace(REGEX_ORARIO_INIZIO, "").trim();
 
   // Rimuove introduzioni prima di cercare il verbo
   var testoSenzaIntro = testoPulito
@@ -2753,6 +3384,25 @@ function estraiAzioneDaParte(parte, oggettoPrecedente) {
   return {
     testo: testoAzione,
     oggettoContext: oggettoEsplicito || oggettoDaUsare || oggettoPrecedente || ""
+  };
+}
+
+function estraiAzioneNominativaDaParte(parte) {
+  var testoPulito = pulisciConnettoriInutili(parte);
+  testoPulito = testoPulito.replace(REGEX_RIFERIMENTO_TEMPORALE_INIZIO, "").trim();
+  testoPulito = testoPulito.replace(REGEX_ORARIO_INIZIO, "").trim();
+  testoPulito = pulisciOggettoAzione(testoPulito);
+
+  if (!testoPulito || fraseIgnorabile(testoPulito)) return null;
+  if (REGEX_INTRO_AZIONE.test(testoPulito)) return null;
+  if (!/[a-zA-ZÀ-ÖØ-öø-ÿ]/.test(testoPulito)) return null;
+
+  var parole = testoPulito.split(/\s+/);
+  if (parole.length > 5) return null;
+
+  return {
+    testo: testoPulito.charAt(0).toUpperCase() + testoPulito.slice(1),
+    oggettoContext: testoPulito
   };
 }
 
@@ -2889,7 +3539,7 @@ function generaUrlGoogleCalendar(scadenza) {
   var dataFineStr = y2 + m2 + d2;
 
   var titolo = encodeURIComponent(scadenza.testo || "Scadenza");
-  var descrizione = encodeURIComponent("Scadenza estratta da ActionFlow: " + (scadenza.data || ""));
+  var descrizione = encodeURIComponent("Scadenza estratta da FloMind: " + (scadenza.data || ""));
 
   return "https://calendar.google.com/calendar/render?action=TEMPLATE"
     + "&text=" + titolo
@@ -2901,7 +3551,7 @@ function costruisciFileICS(scadenze) {
   var righe = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//ActionFlow//Scadenze//IT",
+    "PRODID:-//FloMind//Scadenze//IT",
     "CALSCALE:GREGORIAN"
   ];
 
@@ -2932,7 +3582,7 @@ function costruisciFileICS(scadenze) {
     righe.push("SUMMARY:" + escapeICSText(voce.testo));
     righe.push("DTSTART;VALUE=DATE:" + dataInizio);
     righe.push("DTEND;VALUE=DATE:" + dataFine);
-    righe.push("DESCRIPTION:" + escapeICSText("Scadenza estratta da ActionFlow: " + voce.data));
+    righe.push("DESCRIPTION:" + escapeICSText("Scadenza estratta da FloMind: " + voce.data));
     righe.push("END:VEVENT");
   }
 
@@ -2949,7 +3599,7 @@ function scaricaFileICS(contenuto) {
   var url = URL.createObjectURL(blob);
   var link = document.createElement("a");
   link.href = url;
-  link.download = "actionflow-eventi.ics";
+  link.download = "flomind-eventi.ics";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -3025,6 +3675,120 @@ function normalizzaAzioneSalvata(azione) {
   };
 }
 
+function getRegexDataAnalisi() {
+  return /\b(\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?|\d{1,2}\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(\s+\d{4})?|(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4})\b/i;
+}
+
+function getTaskMatchTokens(testo) {
+  return normalizeText(testo)
+    .split(/\s+/)
+    .filter(function(token) {
+      return token.length > 2;
+    });
+}
+
+function taskAppartieneAFrase(task, frase) {
+  if (!task || !task.testo || !frase) return false;
+
+  var fraseNorm = normalizeText(frase);
+  var taskNorm = normalizeText(task.testo);
+  if (!fraseNorm || !taskNorm) return false;
+
+  if (fraseNorm.indexOf(taskNorm) !== -1) return true;
+
+  var tokens = getTaskMatchTokens(task.testo);
+  if (tokens.length === 0) return false;
+
+  var matched = 0;
+  for (var i = 0; i < tokens.length; i++) {
+    if (fraseNorm.indexOf(tokens[i]) !== -1) matched++;
+  }
+
+  return matched === tokens.length || (tokens.length >= 2 && matched >= 2);
+}
+
+function aggiungiScadenzePerAzioniPropagate(scadenze, azioni) {
+  var source = Array.isArray(azioni) ? azioni : [];
+  for (var i = 0; i < source.length; i++) {
+    var azione = source[i];
+    if (!azione || !azione.testo || !azione.scadenzaOriginale) continue;
+
+    aggiungiScadenzaUnica(scadenze, azione.testo, {
+      originale: azione.scadenzaOriginale,
+      dataRisolta: azione.dataISO || null
+    });
+  }
+}
+
+function propagaDateDiFrase(testoOriginale, risultato) {
+  var output = risultato && typeof risultato === "object" ? risultato : {};
+  var azioni = Array.isArray(output.azioni) ? output.azioni : [];
+  var scadenze = Array.isArray(output.scadenze) ? output.scadenze : [];
+  var frasi = String(testoOriginale || "").split(/[.!?\n]+/);
+  var regexData = getRegexDataAnalisi();
+  var debug = {
+    input: testoOriginale || "",
+    detectedSentenceDates: [],
+    extractedTaskTexts: azioni.map(function(azione) { return azione && azione.testo ? azione.testo : ""; }),
+    finalTaskDates: []
+  };
+
+  for (var i = 0; i < frasi.length; i++) {
+    var frase = frasi[i].trim();
+    if (!frase) continue;
+
+    var dateFrase = estraiScadenzeDaTesto(frase, regexData);
+    var scadenzaFrase = scegliScadenzaDaPropagare(dateFrase);
+    if (!scadenzaFrase) continue;
+
+    var taskFrase = [];
+    for (var a = 0; a < azioni.length; a++) {
+      if (taskAppartieneAFrase(azioni[a], frase)) {
+        taskFrase.push(azioni[a]);
+      }
+    }
+
+    if (taskFrase.length === 0 && frasi.length === 1) {
+      taskFrase = azioni.slice();
+    }
+
+    debug.detectedSentenceDates.push({
+      sentence: frase,
+      date: scadenzaFrase.originale,
+      dataISO: scadenzaFrase.dataRisolta,
+      taskCount: taskFrase.length
+    });
+
+    if (taskFrase.length < 2) continue;
+
+    for (var t = 0; t < taskFrase.length; t++) {
+      if (taskFrase[t].dataISO || taskFrase[t].scadenzaOriginale) continue;
+
+      taskFrase[t].scadenzaOriginale = scadenzaFrase.originale;
+      taskFrase[t].dataISO = scadenzaFrase.dataRisolta || null;
+    }
+  }
+
+  aggiungiScadenzePerAzioniPropagate(scadenze, azioni);
+
+  output.azioni = dedupeTasks(azioni);
+  output.scadenze = dedupeScadenze(scadenze);
+  debug.finalTaskDates = output.azioni.map(function(azione) {
+    return {
+      testo: azione && azione.testo ? azione.testo : "",
+      scadenzaOriginale: azione && azione.scadenzaOriginale ? azione.scadenzaOriginale : null,
+      dataISO: azione && azione.dataISO ? azione.dataISO : null
+    };
+  });
+
+  console.log("[FloMind][DatePropagation] original input:", debug.input);
+  console.log("[FloMind][DatePropagation] detected sentence date:", debug.detectedSentenceDates);
+  console.log("[FloMind][DatePropagation] extracted task texts:", debug.extractedTaskTexts);
+  console.log("[FloMind][DatePropagation] final task dates:", debug.finalTaskDates);
+
+  return output;
+}
+
 // Converte la risposta del backend nel formato usato dal rendering
 function convertiRispostaBackend(data) {
   var azioni = [];
@@ -3092,7 +3856,7 @@ function convertiRispostaBackend(data) {
 // Parser locale (fallback se il backend non è raggiungibile)
 function analizzaTestoLocale(testo) {
   var frasi = testo.split(/[.!?\n]+/);
-  var regexData = /\b(\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?|\d{1,2}\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(\s+\d{4})?|(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4})\b/i;
+  var regexData = getRegexDataAnalisi();
 
   var azioni = [];
   var scadenze = [];
@@ -3108,34 +3872,54 @@ function analizzaTestoLocale(testo) {
       var gruppo = gruppi[g];
       var azioniGruppo = [];
       var scadenzeGruppo = [];
+      var scadenzaCorrenteGruppo = null;
+      var orarioCorrenteGruppo = null;
 
       for (var j = 0; j < gruppo.length; j++) {
         var parte = gruppo[j].trim();
         if (parte === "") continue;
 
         var scadenzeParte = estraiScadenzeDaTesto(parte, regexData);
+        var scadenzeEffettiveParte = applicaScadenzaPropagata(scadenzeParte, scadenzaCorrenteGruppo);
+        var orarioParte = estraiOrarioDaTesto(parte);
+        var orarioEffettivoParte = orarioParte || orarioCorrenteGruppo;
         var azioneEstratta = estraiAzioneDaParte(parte, oggettoContext);
+
+        if (!azioneEstratta && scadenzeParte.length > 0) {
+          azioneEstratta = estraiAzioneNominativaDaParte(parte);
+        }
+
+        if (scadenzeParte.length > 0) {
+          scadenzaCorrenteGruppo = scegliScadenzaDaPropagare(scadenzeParte);
+          if (!orarioParte) orarioEffettivoParte = null;
+        }
+
+        if (orarioParte) {
+          orarioCorrenteGruppo = orarioParte;
+        } else if (scadenzeParte.length > 0) {
+          orarioCorrenteGruppo = null;
+        }
 
         if (azioneEstratta) {
           oggettoContext = azioneEstratta.oggettoContext;
           azioniGruppo.push({
             testo: azioneEstratta.testo,
             parteOriginale: parte,
-            dateLocali: scadenzeParte,
-            time: estraiOrarioDaTesto(parte)
+            dateLocali: scadenzeEffettiveParte,
+            time: orarioEffettivoParte
           });
         }
 
-        for (var d = 0; d < scadenzeParte.length; d++) {
+        for (var d = 0; d < scadenzeEffettiveParte.length; d++) {
           var giaPresente = false;
           for (var x = 0; x < scadenzeGruppo.length; x++) {
-            if (scadenzeGruppo[x].originale === scadenzeParte[d].originale) {
+            if (scadenzeGruppo[x].originale === scadenzeEffettiveParte[d].originale) {
               giaPresente = true;
               break;
             }
           }
           if (!giaPresente) {
-            scadenzeGruppo.push(scadenzeParte[d]);
+            scadenzeGruppo.push(scadenzeEffettiveParte[d]);
           }
         }
       }
@@ -3143,8 +3927,15 @@ function analizzaTestoLocale(testo) {
       for (var a = 0; a < azioniGruppo.length; a++) {
         var az = azioniGruppo[a];
         var priorita = calcolaPrioritaFrase(az.parteOriginale, az.testo, az.dateLocali);
+        var scadenzaAzione = scegliScadenzaDaPropagare(az.dateLocali);
 
-        aggiungiAzioneUnica(azioni, { testo: az.testo, priorita: priorita, time: az.time || null });
+        aggiungiAzioneUnica(azioni, {
+          testo: az.testo,
+          priorita: priorita,
+          scadenzaOriginale: scadenzaAzione ? scadenzaAzione.originale : null,
+          dataISO: scadenzaAzione ? scadenzaAzione.dataRisolta : null,
+          time: az.time || null
+        });
 
         for (var sd = 0; sd < az.dateLocali.length; sd++) {
           aggiungiScadenzaUnica(scadenze, az.testo, az.dateLocali[sd]);
@@ -3217,6 +4008,8 @@ async function analizzaTesto() {
   var testo = document.getElementById("testo-input").value;
   var errore = document.getElementById("messaggio-errore");
   var textarea = document.getElementById("testo-input");
+  var currentUser = getCurrentAppUser();
+  var limitCheck = checkAnalysisLimit(currentUser);
 
   if (testo.trim() === "") {
     errore.style.display = "block";
@@ -3224,8 +4017,21 @@ async function analizzaTesto() {
     return;
   }
 
+  if (!limitCheck.allowed) {
+    errore.textContent = "Hai raggiunto il limite di 5 analisi per oggi. Passa a Pro per continuare.";
+    errore.style.display = "block";
+    textarea.classList.remove("errore-campo");
+    openUpgradeModal({
+      title: "Limite giornaliero raggiunto",
+      copy: "Con il piano gratuito puoi analizzare fino a 5 testi al giorno. Passa a Pro per continuare senza limiti.",
+      ctaLabel: "Passa a Pro"
+    });
+    return;
+  }
+
   errore.style.display = "none";
   textarea.classList.remove("errore-campo");
+  incrementAnalysisUsage();
 
   // Disabilita il bottone durante la chiamata
   var bottone = document.getElementById("bottone-analizza");
@@ -3236,10 +4042,10 @@ async function analizzaTesto() {
 
   var payload = { testo: testo.trim() };
 
-  console.log("[ActionFlow] === INIZIO CHIAMATA ===");
-  console.log("[ActionFlow] Metodo: POST");
-  console.log("[ActionFlow] URL: /api/analyze");
-  console.log("[ActionFlow] Body inviato:", JSON.stringify(payload));
+  console.log("[FloMind] === INIZIO CHIAMATA ===");
+  console.log("[FloMind] Metodo: POST");
+  console.log("[FloMind] URL: /api/analyze");
+  console.log("[FloMind] Body inviato:", JSON.stringify(payload));
 
   try {
     var response = await fetch("/api/analyze", {
@@ -3248,12 +4054,12 @@ async function analizzaTesto() {
       body: JSON.stringify(payload)
     });
 
-    console.log("[ActionFlow] Status risposta:", response.status, response.statusText);
-    console.log("[ActionFlow] Content-Type risposta:", response.headers.get("content-type"));
+    console.log("[FloMind] Status risposta:", response.status, response.statusText);
+    console.log("[FloMind] Content-Type risposta:", response.headers.get("content-type"));
 
     if (!response.ok) {
       var rawError = await response.text();
-      console.error("[ActionFlow] Errore HTTP " + response.status + " — body:", rawError);
+      console.error("[FloMind] Errore HTTP " + response.status + " — body:", rawError);
       var dettaglio;
       try {
         var parsedErr = JSON.parse(rawError);
@@ -3265,19 +4071,19 @@ async function analizzaTesto() {
     }
 
     var rawBody = await response.text();
-    console.log("[ActionFlow] Body grezzo ricevuto:", rawBody.substring(0, 300));
+    console.log("[FloMind] Body grezzo ricevuto:", rawBody.substring(0, 300));
 
     var data;
     try {
       data = JSON.parse(rawBody);
     } catch (e) {
-      console.error("[ActionFlow] JSON non valido nella risposta:", e.message);
+      console.error("[FloMind] JSON non valido nella risposta:", e.message);
       throw { tipo: "json", messaggio: "Risposta non è un JSON valido" };
     }
 
-    console.log("[ActionFlow] Risposta backend parsed OK — azioni:", (data.azioni || []).length, "scadenze:", (data.scadenze || []).length);
+    console.log("[FloMind] Risposta backend parsed OK — azioni:", (data.azioni || []).length, "scadenze:", (data.scadenze || []).length);
 
-    var risultato = convertiRispostaBackend(data);
+    var risultato = propagaDateDiFrase(testo, convertiRispostaBackend(data));
     openAnalysisPreview(risultato.azioni, risultato.scadenze, risultato.daPianificare);
 
   } catch (err) {
@@ -3285,18 +4091,18 @@ async function analizzaTesto() {
     var messaggio;
 
     if (err && err.tipo === "http") {
-      console.error("[ActionFlow] Errore server HTTP " + err.status + ":", err.messaggio);
+      console.error("[FloMind] Errore server HTTP " + err.status + ":", err.messaggio);
       messaggio = "⚠ Errore dal server (" + err.status + "): " + err.messaggio;
     } else if (err && err.tipo === "json") {
-      console.error("[ActionFlow] Risposta JSON non valida:", err.messaggio);
+      console.error("[FloMind] Risposta JSON non valida:", err.messaggio);
       messaggio = "⚠ Risposta dal server non valida — usando modalità base";
     } else {
-      console.error("[ActionFlow] Backend non raggiungibile (errore di rete):", err.message || err);
+      console.error("[FloMind] Backend non raggiungibile (errore di rete):", err.message || err);
       messaggio = "⚠ Backend non raggiungibile — usando modalità base";
     }
 
     // Fallback al parser locale
-    var risultato = analizzaTestoLocale(testo);
+    var risultato = propagaDateDiFrase(testo, analizzaTestoLocale(testo));
     openAnalysisPreview(risultato.azioni, risultato.scadenze);
 
     if (avviso) {
@@ -3308,7 +4114,7 @@ async function analizzaTesto() {
       bottone.disabled = false;
       bottone.textContent = "Analizza";
     }
-    console.log("[ActionFlow] === FINE CHIAMATA ===");
+    console.log("[FloMind] === FINE CHIAMATA ===");
   }
 }
 
@@ -3432,6 +4238,10 @@ function userCanUseGoogleCalendar() {
   return !!(currentUser && currentUser.provider === "google");
 }
 
+function canUseCalendarIntegration(user) {
+  return getCurrentUserPlan(user) === "pro";
+}
+
 function buildCalendarEventPayloadFromTask(taskDisplay) {
   if (!taskDisplay || !taskDisplay.testo || !taskDisplay.dataISO) {
     return null;
@@ -3446,7 +4256,7 @@ function buildCalendarEventPayloadFromTask(taskDisplay) {
   }
 
   var end = new Date(start.getTime() + durationMinutes * 60 * 1000);
-  var description = "Creato da ActionFlow";
+  var description = "Creato da FloMind";
 
   if (taskDisplay.prioritaDinamica || taskDisplay.priorita) {
     description += "\nPriorita: " + (taskDisplay.prioritaDinamica || taskDisplay.priorita);
@@ -3483,7 +4293,7 @@ function buildAutoSyncCalendarPayloadFromTask(task) {
   var end = new Date(start.getTime() + durationMinutes * 60 * 1000);
   return {
     title: task.testo,
-    description: "Creato automaticamente da ActionFlow",
+    description: "Creato automaticamente da FloMind",
     start: start.toISOString(),
     end: end.toISOString(),
   };
@@ -3492,6 +4302,14 @@ function buildAutoSyncCalendarPayloadFromTask(task) {
 async function syncTasksToGoogleCalendarIfNeeded(tasks) {
   console.log("[Calendar] Tasks created", Array.isArray(tasks) ? tasks : []);
   console.log("[Calendar] Auto-sync enabled:", isCalendarAutoSyncEnabled());
+
+  if (!requirePro(getCurrentAppUser(), {
+    title: "Calendar disponibile con Pro",
+    copy: "L'integrazione con Google Calendar è disponibile con FloMind Pro. Passa a Pro per sincronizzare i task.",
+    ctaLabel: "Sblocca Calendar"
+  })) {
+    return;
+  }
 
   if (!isCalendarAutoSyncEnabled() || !userCanUseGoogleCalendar()) {
     return;
@@ -3550,6 +4368,14 @@ async function syncTasksToGoogleCalendarIfNeeded(tasks) {
 }
 
 async function aggiungiTaskAGoogleCalendar(taskDisplay) {
+  if (!requirePro(getCurrentAppUser(), {
+    title: "Calendar disponibile con Pro",
+    copy: "L'integrazione con Google Calendar è disponibile con FloMind Pro. Passa a Pro per sincronizzare i task.",
+    ctaLabel: "Sblocca Calendar"
+  })) {
+    return;
+  }
+
   var payload = buildCalendarEventPayloadFromTask(taskDisplay);
   if (!payload) {
     alert("Questa azione non ha ancora una data valida per creare un evento.");
@@ -3662,15 +4488,21 @@ function riempiListaAzioni(idContenitore, elementi) {
 
       var btnGoogleCalendar = null;
       if (userCanUseGoogleCalendar() && buildCalendarEventPayloadFromTask(azioneDisplay)) {
+        var calendarEnabled = canUseCalendarIntegration(getCurrentAppUser());
         btnGoogleCalendar = document.createElement("button");
         btnGoogleCalendar.type = "button";
         btnGoogleCalendar.className = "btn-modifica";
+        btnGoogleCalendar.disabled = !calendarEnabled;
+        btnGoogleCalendar.classList.toggle("is-disabled", !calendarEnabled);
+        btnGoogleCalendar.setAttribute("aria-disabled", calendarEnabled ? "false" : "true");
+        btnGoogleCalendar.title = calendarEnabled ? "" : "Disponibile con FloMind Pro";
         btnGoogleCalendar.textContent = "Aggiungi a Google Calendar";
-        (function(taskForCalendar) {
+        (function(taskForCalendar, isEnabled) {
           btnGoogleCalendar.addEventListener("click", function() {
+            if (!isEnabled) return;
             aggiungiTaskAGoogleCalendar(taskForCalendar);
           });
-        })(azioneDisplay);
+        })(azioneDisplay, calendarEnabled);
       }
 
       (function(liEl, az) {
@@ -3840,13 +4672,24 @@ function riempiListaScadenze(idLista, elementi) {
     // Pulsante Google Calendar se la data è valida
     var urlGcal = generaUrlGoogleCalendar(elementi[i]);
     if (urlGcal) {
-      var linkGcal = document.createElement("a");
-      linkGcal.href = urlGcal;
-      linkGcal.target = "_blank";
-      linkGcal.rel = "noopener noreferrer";
-      linkGcal.className = "btn-gcal";
-      linkGcal.textContent = "+ Google Calendar";
-      li.appendChild(linkGcal);
+      if (canUseCalendarIntegration(getCurrentAppUser())) {
+        var linkGcal = document.createElement("a");
+        linkGcal.href = urlGcal;
+        linkGcal.target = "_blank";
+        linkGcal.rel = "noopener noreferrer";
+        linkGcal.className = "btn-gcal";
+        linkGcal.textContent = "+ Google Calendar";
+        li.appendChild(linkGcal);
+      } else {
+        var disabledGcalButton = document.createElement("button");
+        disabledGcalButton.type = "button";
+        disabledGcalButton.className = "btn-gcal is-disabled";
+        disabledGcalButton.disabled = true;
+        disabledGcalButton.setAttribute("aria-disabled", "true");
+        disabledGcalButton.title = "Disponibile con FloMind Pro";
+        disabledGcalButton.textContent = "+ Google Calendar";
+        li.appendChild(disabledGcalButton);
+      }
     }
 
     // Pulsante Modifica scadenza
@@ -3917,57 +4760,51 @@ function attivaEditScadenza(li, scadenza, scadenzeArr, onSave) {
   li.appendChild(btnAnnulla);
 }
 
-/* ---- Profilo locale ---- */
-
-function leggiProfilo() {
-  try {
-    var raw = localStorage.getItem("actionflow_profilo");
-    var dati = raw ? JSON.parse(raw) : null;
-    return (dati && typeof dati === "object" && dati.nome) ? dati : null;
-  } catch (e) { return null; }
-}
-
-function salvaProfilo(nome) {
-  var profilo = { nome: nome.trim() };
-  localStorage.setItem("actionflow_profilo", JSON.stringify(profilo));
-  return profilo;
-}
-
-function resetProfilo() {
-  localStorage.removeItem("actionflow_profilo");
-}
-
-function chiediNomeProfilo() {
-  var nome = prompt("Come ti chiami?");
-  if (nome && nome.trim().length > 0) {
-    return salvaProfilo(nome);
-  }
-  return null;
-}
-
-function modificaNomeProfilo() {
-  var profilo = leggiProfilo();
-  var attuale = profilo ? profilo.nome : "";
-  var nome = prompt("Modifica il tuo nome:", attuale);
-  if (nome !== null && nome.trim().length > 0) {
-    salvaProfilo(nome);
-    mostraProfilo();
-  }
-}
-
-function eseguiResetProfilo() {
-  if (confirm("Vuoi davvero resettare il profilo?")) {
-    resetProfilo();
-    mostraProfilo();
-  }
-}
-
 function avviaLoginGoogle() {
+  if (isBetaExternalServicesDisabled()) {
+    showBetaDisabledNotice();
+    return;
+  }
+
   window.location.href = "/auth/google";
 }
 
 function avviaLoginApple() {
+  if (isBetaExternalServicesDisabled()) {
+    showBetaDisabledNotice();
+    return;
+  }
+
   window.location.href = "/auth/apple";
+}
+
+var betaDisabledNoticeTimer = null;
+
+function isBetaExternalServicesDisabled() {
+  return !!(window.ActionFlowConfig && window.ActionFlowConfig.BETA_DISABLE_EXTERNAL_SERVICES === true);
+}
+
+function showBetaDisabledNotice() {
+  var message = window.ActionFlowConfig && window.ActionFlowConfig.BETA_DISABLED_MESSAGE
+    ? window.ActionFlowConfig.BETA_DISABLED_MESSAGE
+    : "L'applicazione è ancora in beta, alcune funzioni sono temporaneamente disabilitate.";
+  var notice = document.getElementById("beta-disabled-notice");
+
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = "beta-disabled-notice";
+    notice.className = "beta-disabled-notice";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    document.body.appendChild(notice);
+  }
+
+  notice.textContent = message;
+  notice.classList.add("is-visible");
+  window.clearTimeout(betaDisabledNoticeTimer);
+  betaDisabledNoticeTimer = window.setTimeout(function() {
+    notice.classList.remove("is-visible");
+  }, 2500);
 }
 
 function getUiIconSvg(name) {
@@ -3986,29 +4823,113 @@ function buildIconLabel(iconName, label) {
 }
 
 var GUEST_USER_STORAGE_KEY = "actionflow_guest_user";
+var GUEST_PROFILE_STORAGE_KEY = "flomind_guest_profile";
+var LEGACY_GUEST_PROFILE_STORAGE_KEY = "actionflow_profilo";
 var THEME_STORAGE_KEY = "actionflow_theme";
 var USER_SETTINGS_STORAGE_KEY = "actionflow_user_settings";
+var ANALYSIS_USAGE_STORAGE_KEY = "actionflow_analysis_usage";
+var FREE_ANALYSIS_DAILY_LIMIT = 5;
 var pendingSettingsImageDataUrl = "";
+var selectedUpgradeBillingInterval = "monthly";
+var focusDateMode = "today";
 
 function readGuestUser() {
   try {
     var raw = localStorage.getItem(GUEST_USER_STORAGE_KEY);
     var parsed = raw ? JSON.parse(raw) : null;
+    var rawProfile = localStorage.getItem(GUEST_PROFILE_STORAGE_KEY);
 
-    if (!parsed || typeof parsed !== "object" || !parsed.name) {
+    if ((!parsed || typeof parsed !== "object") && !rawProfile) {
+      return null;
+    }
+
+    var guestProfile = readGuestProfile();
+    var displayName = guestProfile.displayName || (parsed && parsed.name) || "";
+
+    if (!displayName) {
       return null;
     }
 
     return {
-      id: parsed.id || "guest-local",
+      id: parsed && parsed.id ? parsed.id : "guest-local",
       provider: "guest",
-      providerUserId: parsed.id || "guest-local",
-      name: parsed.name,
-      email: null
+      providerUserId: parsed && parsed.id ? parsed.id : "guest-local",
+      name: displayName,
+      displayName: displayName,
+      email: null,
+      avatarUrl: guestProfile.avatarDataUrl || "",
+      avatarDataUrl: guestProfile.avatarDataUrl || ""
     };
   } catch (e) {
     return null;
   }
+}
+
+function readLegacyGuestProfile() {
+  try {
+    var raw = localStorage.getItem(LEGACY_GUEST_PROFILE_STORAGE_KEY);
+    var parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object") return {};
+
+    return {
+      displayName: typeof parsed.displayName === "string"
+        ? parsed.displayName.trim()
+        : (typeof parsed.name === "string" ? parsed.name.trim() : ""),
+      avatarDataUrl: typeof parsed.avatarDataUrl === "string"
+        ? parsed.avatarDataUrl
+        : (typeof parsed.avatarUrl === "string" ? parsed.avatarUrl : "")
+    };
+  } catch (e) {
+    return {};
+  }
+}
+
+function readGuestProfile() {
+  var profile = {};
+
+  try {
+    var raw = localStorage.getItem(GUEST_PROFILE_STORAGE_KEY);
+    var parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object") {
+      profile.displayName = typeof parsed.displayName === "string" ? parsed.displayName.trim() : "";
+      profile.avatarDataUrl = typeof parsed.avatarDataUrl === "string" ? parsed.avatarDataUrl : "";
+    }
+  } catch (e) {}
+
+  if (!profile.displayName && !profile.avatarDataUrl) {
+    profile = readLegacyGuestProfile();
+  }
+
+  try {
+    var rawGuest = localStorage.getItem(GUEST_USER_STORAGE_KEY);
+    var parsedGuest = rawGuest ? JSON.parse(rawGuest) : null;
+    if (!profile.displayName && parsedGuest && typeof parsedGuest.name === "string") {
+      profile.displayName = parsedGuest.name.trim();
+    }
+  } catch (e) {}
+
+  return {
+    displayName: profile.displayName || "",
+    avatarDataUrl: profile.avatarDataUrl || ""
+  };
+}
+
+function writeGuestProfile(profile) {
+  var currentProfile = readGuestProfile();
+  var nextProfile = {
+    displayName: typeof profile.displayName === "string" && profile.displayName.trim()
+      ? profile.displayName.trim()
+      : currentProfile.displayName,
+    avatarDataUrl: typeof profile.avatarDataUrl === "string"
+      ? profile.avatarDataUrl
+      : currentProfile.avatarDataUrl
+  };
+
+  localStorage.setItem(GUEST_PROFILE_STORAGE_KEY, JSON.stringify(nextProfile));
+  if (nextProfile.displayName) {
+    writeGuestUser(nextProfile.displayName);
+  }
+  return nextProfile;
 }
 
 function writeGuestUser(name) {
@@ -4026,6 +4947,7 @@ function writeGuestUser(name) {
 
 function clearGuestUser() {
   localStorage.removeItem(GUEST_USER_STORAGE_KEY);
+  localStorage.removeItem(GUEST_PROFILE_STORAGE_KEY);
 }
 
 function getCurrentAppUser() {
@@ -4034,6 +4956,309 @@ function getCurrentAppUser() {
     : null;
 
   return authUser || readGuestUser();
+}
+
+function getCurrentUserPlan(user) {
+  return user && user.plan === "pro" ? "pro" : "free";
+}
+
+function getTodayUsageKey() {
+  var now = new Date();
+  var year = now.getFullYear();
+  var month = String(now.getMonth() + 1).padStart(2, "0");
+  var day = String(now.getDate()).padStart(2, "0");
+  return year + "-" + month + "-" + day;
+}
+
+function readAnalysisUsage() {
+  var raw = window.ActionFlowAuth.readScopedObject(ANALYSIS_USAGE_STORAGE_KEY);
+  var today = getTodayUsageKey();
+  var lastResetDate = raw && raw.lastResetDate ? String(raw.lastResetDate) : "";
+  var analysesToday = raw && typeof raw.analysesToday === "number" ? raw.analysesToday : 0;
+
+  if (lastResetDate !== today) {
+    return {
+      lastResetDate: today,
+      analysesToday: 0
+    };
+  }
+
+  return {
+    lastResetDate: today,
+    analysesToday: analysesToday
+  };
+}
+
+function writeAnalysisUsage(usage) {
+  window.ActionFlowAuth.writeScopedObject(ANALYSIS_USAGE_STORAGE_KEY, {
+    lastResetDate: usage && usage.lastResetDate ? usage.lastResetDate : getTodayUsageKey(),
+    analysesToday: usage && typeof usage.analysesToday === "number" ? usage.analysesToday : 0
+  });
+}
+
+function incrementAnalysisUsage() {
+  var usage = readAnalysisUsage();
+  usage.analysesToday += 1;
+  writeAnalysisUsage(usage);
+  return usage;
+}
+
+function checkAnalysisLimit(user) {
+  if (getCurrentUserPlan(user) === "pro") {
+    return {
+      allowed: true,
+      limit: Infinity,
+      remaining: Infinity
+    };
+  }
+
+  var usage = readAnalysisUsage();
+  var remaining = Math.max(0, FREE_ANALYSIS_DAILY_LIMIT - usage.analysesToday);
+
+  return {
+    allowed: usage.analysesToday < FREE_ANALYSIS_DAILY_LIMIT,
+    limit: FREE_ANALYSIS_DAILY_LIMIT,
+    remaining: remaining,
+    analysesToday: usage.analysesToday,
+    lastResetDate: usage.lastResetDate
+  };
+}
+
+function openUpgradeModal(options) {
+  var modal = document.getElementById("modal-upgrade");
+  var title = document.getElementById("upgrade-modal-title");
+  var copy = document.getElementById("upgrade-modal-copy");
+  if (!modal) return;
+
+  if (title) {
+    title.textContent = options && options.title ? options.title : "Passa a Pro";
+  }
+
+  if (copy) {
+    copy.textContent = options && options.copy
+      ? options.copy
+      : "Questa funzione è disponibile con FloMind Pro.";
+  }
+
+  setUpgradeBillingInterval("monthly");
+  modal.classList.remove("nascosto");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeUpgradeModal() {
+  var modal = document.getElementById("modal-upgrade");
+  if (!modal) return;
+
+  modal.classList.add("nascosto");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function requirePro(user, options) {
+  if (getCurrentUserPlan(user) === "pro") {
+    return true;
+  }
+
+  openUpgradeModal(options);
+  return false;
+}
+
+function isAuthenticatedBillingUser(user) {
+  return !!(user && user.provider && user.provider !== "guest");
+}
+
+function getSettingsPlanLabel(user) {
+  if (!user || getCurrentUserPlan(user) !== "pro") {
+    return "Free";
+  }
+
+  if (user.billingInterval === "yearly") {
+    return "Pro annuale";
+  }
+
+  if (user.billingInterval === "monthly") {
+    return "Pro mensile";
+  }
+
+  return "Pro";
+}
+
+function setButtonBusy(button, isBusy, busyLabel, idleLabel) {
+  if (!button) return;
+
+  if (isBusy) {
+    button.dataset.originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = busyLabel;
+    return;
+  }
+
+  button.disabled = false;
+  button.textContent = idleLabel || button.dataset.originalLabel || button.textContent;
+}
+
+function setUpgradeBillingInterval(interval) {
+  var normalizedInterval = interval === "monthly" ? "monthly" : "yearly";
+  var yearlyButton = document.getElementById("btn-upgrade-billing-yearly");
+  var monthlyButton = document.getElementById("btn-upgrade-billing-monthly");
+  var priceLabel = document.getElementById("upgrade-pro-price");
+  var savingsInlineLabel = document.getElementById("upgrade-pro-savings-inline");
+  var secondaryPriceLabel = document.getElementById("upgrade-pro-secondary-price");
+  var ctaButton = document.getElementById("btn-upgrade-cta");
+
+  selectedUpgradeBillingInterval = normalizedInterval;
+
+  if (yearlyButton) {
+    yearlyButton.classList.toggle("is-selected", normalizedInterval === "yearly");
+    yearlyButton.setAttribute("aria-pressed", normalizedInterval === "yearly" ? "true" : "false");
+  }
+
+  if (monthlyButton) {
+    monthlyButton.classList.toggle("is-selected", normalizedInterval === "monthly");
+    monthlyButton.setAttribute("aria-pressed", normalizedInterval === "monthly" ? "true" : "false");
+  }
+
+  if (priceLabel) {
+    priceLabel.innerHTML = normalizedInterval === "yearly"
+      ? '€40<span>/anno</span>'
+      : '€5<span>/mese</span>';
+  }
+
+  if (savingsInlineLabel) {
+    savingsInlineLabel.classList.toggle("nascosto", normalizedInterval !== "yearly");
+  }
+
+  if (secondaryPriceLabel) {
+    secondaryPriceLabel.classList.toggle("nascosto", normalizedInterval !== "yearly");
+  }
+
+  if (ctaButton) {
+    ctaButton.textContent = normalizedInterval === "yearly"
+      ? "Inizia Pro annuale"
+      : "Inizia Pro mensile";
+  }
+}
+
+async function createStripeCheckoutSession(interval, triggerButton) {
+  if (isBetaExternalServicesDisabled()) {
+    showBetaDisabledNotice();
+    return;
+  }
+
+  var currentUser = getCurrentAppUser();
+
+  if (!isAuthenticatedBillingUser(currentUser)) {
+    alert("Accedi con Google o Apple prima di attivare FloMind Pro.");
+    window.location.href = "/login";
+    return;
+  }
+
+  setButtonBusy(
+    triggerButton,
+    true,
+    interval === "yearly" ? "Reindirizzamento..." : "Reindirizzamento...",
+    triggerButton ? triggerButton.textContent : ""
+  );
+
+  try {
+    var response = await fetch("/api/billing/create-checkout-session", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ interval: interval })
+    });
+    var payload = await response.json().catch(function() { return {}; });
+
+    if (!response.ok || !payload.url) {
+      throw new Error(payload.error || "Impossibile aprire Stripe Checkout.");
+    }
+
+    window.location.href = payload.url;
+  } catch (error) {
+    setButtonBusy(triggerButton, false);
+    alert(error && error.message ? error.message : "Impossibile aprire Stripe Checkout.");
+  }
+}
+
+async function openStripeCustomerPortal(triggerButton) {
+  if (isBetaExternalServicesDisabled()) {
+    showBetaDisabledNotice();
+    return;
+  }
+
+  var currentUser = getCurrentAppUser();
+
+  if (!isAuthenticatedBillingUser(currentUser)) {
+    alert("Accedi con Google o Apple prima di gestire l'abbonamento.");
+    window.location.href = "/login";
+    return;
+  }
+
+  setButtonBusy(triggerButton, true, "Apertura...", triggerButton ? triggerButton.textContent : "");
+
+  try {
+    var response = await fetch("/api/billing/create-portal-session", {
+      method: "POST",
+      credentials: "same-origin"
+    });
+    var payload = await response.json().catch(function() { return {}; });
+
+    if (!response.ok || !payload.url) {
+      throw new Error(payload.error || "Impossibile aprire il Customer Portal.");
+    }
+
+    window.location.href = payload.url;
+  } catch (error) {
+    setButtonBusy(triggerButton, false);
+    alert(error && error.message ? error.message : "Impossibile aprire il Customer Portal.");
+  }
+}
+
+function syncSettingsBillingUi(user) {
+  var currentPlan = document.getElementById("settings-current-plan");
+  var upgradeButton = document.getElementById("btn-open-upgrade-modal");
+  var manageBillingButton = document.getElementById("btn-manage-billing");
+  var isPro = getCurrentUserPlan(user) === "pro";
+
+  if (currentPlan) {
+    currentPlan.textContent = getSettingsPlanLabel(user);
+  }
+
+  if (upgradeButton) {
+    upgradeButton.classList.toggle("nascosto", isPro);
+  }
+
+  if (manageBillingButton) {
+    manageBillingButton.classList.toggle("nascosto", !isPro);
+  }
+}
+
+function handleCheckoutQueryState() {
+  var url = new URL(window.location.href);
+  var checkoutState = url.searchParams.get("checkout");
+
+  if (!checkoutState) {
+    return;
+  }
+
+  url.searchParams.delete("checkout");
+  window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : "") + url.hash);
+
+  if (checkoutState === "success") {
+    if (window.ActionFlowAuth && typeof window.ActionFlowAuth.loadCurrentUser === "function") {
+      window.ActionFlowAuth.loadCurrentUser().finally(function() {
+        mostraProfilo();
+      });
+    }
+
+    alert("Checkout completato. Il piano verra aggiornato automaticamente non appena Stripe conferma l'abbonamento.");
+    return;
+  }
+
+  if (checkoutState === "cancelled") {
+    alert("Checkout annullato. Nessuna modifica e' stata applicata al piano.");
+  }
 }
 
 function syncAuthVisibility() {
@@ -4062,7 +5287,7 @@ function getAccountDisplayLabel(user) {
 
 function getAccountImage(user) {
   if (!user || typeof user !== "object") return "";
-  return user.picture || user.image || user.photoURL || "";
+  return user.avatarUrl || user.picture || user.googlePicture || user.image || user.photoURL || "";
 }
 
 function getAuthUserIdentifier(user) {
@@ -4123,24 +5348,44 @@ function getEffectiveUserProfile(user) {
   var storedSettings = readStoredUserSettings();
   var isGuestUser = merged.provider === "guest";
 
-  if (isGuestUser && storedSettings.displayName) {
-    merged.displayName = storedSettings.displayName;
-  }
+  if (isGuestUser) {
+    var guestProfile = readGuestProfile();
+    if (guestProfile.displayName) {
+      merged.displayName = guestProfile.displayName;
+    } else if (storedSettings.displayName) {
+      merged.displayName = storedSettings.displayName;
+    }
 
-  if (isGuestUser && storedSettings.avatarUrl) {
-    merged.avatarUrl = storedSettings.avatarUrl;
+    if (guestProfile.avatarDataUrl) {
+      merged.avatarUrl = guestProfile.avatarDataUrl;
+      merged.avatarDataUrl = guestProfile.avatarDataUrl;
+    } else if (storedSettings.avatarUrl) {
+      merged.avatarUrl = storedSettings.avatarUrl;
+    }
   }
 
   if (isGuestUser && storedSettings.theme) {
     merged.theme = storedSettings.theme;
   }
 
+  if (!merged.googleName && merged.provider === "google" && merged.name) {
+    merged.googleName = merged.name;
+  }
+
+  if (!merged.googlePicture && merged.provider === "google" && merged.picture) {
+    merged.googlePicture = merged.picture;
+  }
+
   if (merged.displayName) {
     merged.name = merged.displayName;
+  } else if (merged.googleName) {
+    merged.name = merged.googleName;
   }
 
   if (merged.avatarUrl) {
     merged.picture = merged.avatarUrl;
+  } else if (merged.googlePicture) {
+    merged.picture = merged.googlePicture;
   }
 
   return merged;
@@ -4170,6 +5415,27 @@ function applyAvatarContent(element, user, fallbackLabel) {
   element.style.backgroundImage = "";
   element.classList.remove("has-image");
   element.classList.remove("is-icon");
+}
+
+function updateSettingsProfilePreview(user, nameOverride) {
+  var avatarPreview = document.getElementById("settings-avatar-preview");
+  var profileName = document.getElementById("settings-profile-name");
+  var effectiveUser = getEffectiveUserProfile(user);
+  var previewName = typeof nameOverride === "string" && nameOverride.trim()
+    ? nameOverride.trim()
+    : (effectiveUser && (effectiveUser.name || effectiveUser.email)) || "Utente";
+  var previewUser = effectiveUser ? Object.assign({}, effectiveUser) : {};
+
+  if (pendingSettingsImageDataUrl) {
+    previewUser.avatarUrl = pendingSettingsImageDataUrl;
+    previewUser.picture = pendingSettingsImageDataUrl;
+  }
+
+  if (profileName) {
+    profileName.textContent = previewName;
+  }
+
+  applyAvatarContent(avatarPreview, previewUser, previewName.charAt(0).toUpperCase());
 }
 
 function closeAccountMenu() {
@@ -4245,19 +5511,28 @@ function openSettingsModal() {
   var authUser = getCurrentAppUser();
   var effectiveUser = getEffectiveUserProfile(authUser);
   var nameInput = document.getElementById("settings-name-input");
-  var imageUrlInput = document.getElementById("settings-image-url-input");
   var fileInput = document.getElementById("settings-image-file-input");
   var themeSelect = document.getElementById("settings-theme-select");
   var calendarAutoSyncInput = document.getElementById("settings-calendar-autosync-input");
+  var calendarAutoSyncField = calendarAutoSyncInput ? calendarAutoSyncInput.closest(".settings-field") : null;
+  var canUseCalendar = canUseCalendarIntegration(authUser);
 
   if (!modal || !effectiveUser) return;
 
   pendingSettingsImageDataUrl = "";
   if (nameInput) nameInput.value = effectiveUser.name || "";
-  if (imageUrlInput) imageUrlInput.value = getAccountImage(effectiveUser) || "";
   if (fileInput) fileInput.value = "";
   if (themeSelect) themeSelect.value = effectiveUser.theme || getStoredThemePreference();
-  if (calendarAutoSyncInput) calendarAutoSyncInput.checked = isCalendarAutoSyncEnabled();
+  if (calendarAutoSyncInput) {
+    calendarAutoSyncInput.checked = canUseCalendar && isCalendarAutoSyncEnabled();
+    calendarAutoSyncInput.disabled = !canUseCalendar;
+    calendarAutoSyncInput.title = canUseCalendar ? "" : "Disponibile con FloMind Pro";
+  }
+  if (calendarAutoSyncField) {
+    calendarAutoSyncField.classList.toggle("is-disabled", !canUseCalendar);
+  }
+  syncSettingsBillingUi(authUser);
+  updateSettingsProfilePreview(authUser, nameInput ? nameInput.value : "");
 
   modal.classList.remove("nascosto");
   modal.setAttribute("aria-hidden", "false");
@@ -4274,11 +5549,18 @@ function closeSettingsModal() {
 function openFocusModal() {
   var modal = document.getElementById("modal-focus");
   if (!modal) return;
+  if (!requirePro(getCurrentAppUser(), {
+    title: "Focus disponibile con Pro",
+    copy: "La modalità Focus è riservata agli utenti Pro. Passa a Pro per aprire il tuo spazio di lavoro focalizzato.",
+    ctaLabel: "Sblocca Focus"
+  })) return;
 
+  focusDateMode = "today";
   renderFocus(loadDailyPlan());
   inizializzaFocusPage();
   modal.classList.remove("nascosto");
   modal.setAttribute("aria-hidden", "false");
+  startFocusRefreshInterval();
 }
 
 function closeFocusModal() {
@@ -4287,20 +5569,20 @@ function closeFocusModal() {
 
   modal.classList.add("nascosto");
   modal.setAttribute("aria-hidden", "true");
+  stopFocusRefreshInterval();
 }
 
 async function saveSettingsModal() {
   var authUser = getCurrentAppUser();
   var nameInput = document.getElementById("settings-name-input");
-  var imageUrlInput = document.getElementById("settings-image-url-input");
   var themeSelect = document.getElementById("settings-theme-select");
   var calendarAutoSyncInput = document.getElementById("settings-calendar-autosync-input");
 
   if (!authUser) return;
 
-  var profileImage = pendingSettingsImageDataUrl || (imageUrlInput ? imageUrlInput.value.trim() : "") || "";
+  var profileImage = pendingSettingsImageDataUrl || (getAccountImage(getEffectiveUserProfile(authUser)) || "");
   var selectedTheme = themeSelect ? themeSelect.value : "system";
-  var calendarAutoSync = !!(calendarAutoSyncInput && calendarAutoSyncInput.checked);
+  var calendarAutoSync = canUseCalendarIntegration(authUser) && !!(calendarAutoSyncInput && calendarAutoSyncInput.checked);
   var settingsPayload = {
     displayName: nameInput ? nameInput.value.trim() : "",
     avatarUrl: profileImage,
@@ -4314,8 +5596,16 @@ async function saveSettingsModal() {
   writeStoredUserSettings(storedSettings);
 
   if (authUser && authUser.provider === "guest") {
-    writeGuestUser(settingsPayload.displayName || authUser.name || "Ospite");
+    var guestProfile = writeGuestProfile({
+      displayName: settingsPayload.displayName || authUser.name || "Ospite",
+      avatarDataUrl: profileImage
+    });
+    writeStoredUserSettings(Object.assign({}, readStoredUserSettings(), {
+      calendarAutoSync: calendarAutoSync
+    }));
     saveThemePreference(selectedTheme);
+    pendingSettingsImageDataUrl = "";
+    updateSettingsProfilePreview(readGuestUser(), guestProfile.displayName || "Ospite");
     mostraProfilo();
     closeSettingsModal();
     return;
@@ -4426,7 +5716,6 @@ function mostraProfilo() {
 
 function inizializzaFocusPage() {
   var focusSection = document.getElementById("sezione-focus");
-  var emptyState = document.getElementById("focus-empty-state");
   var plan = loadDailyPlan();
   var focus = getFocusTasks(plan);
   var haContenuto = !!(focus.ora || focus.dopo.length || focus.piuTardiOggi.length || focus.seAvanzaTempo.length);
@@ -4434,10 +5723,6 @@ function inizializzaFocusPage() {
   if (!focusSection) return;
 
   renderFocus(plan);
-
-  if (emptyState) {
-    emptyState.classList.toggle("nascosto", haContenuto);
-  }
   focusSection.classList.toggle("nascosto", !haContenuto);
 }
 
@@ -4445,6 +5730,7 @@ function inizializzaFocusPage() {
 document.addEventListener("DOMContentLoaded", function() {
   applyTheme(getStoredThemePreference());
   mostraProfilo();
+  handleCheckoutQueryState();
   setupDailyPlanModal();
   setupAnalysisPreviewModal();
 
@@ -4501,28 +5787,89 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
+  var upgradeModal = document.getElementById("modal-upgrade");
+  if (upgradeModal) upgradeModal.addEventListener("click", function(event) {
+    if (event.target === upgradeModal) {
+      closeUpgradeModal();
+    }
+  });
+
   var btnCloseSettings = document.getElementById("btn-close-settings");
   if (btnCloseSettings) btnCloseSettings.addEventListener("click", closeSettingsModal);
 
   var btnCloseFocus = document.getElementById("btn-close-focus");
   if (btnCloseFocus) btnCloseFocus.addEventListener("click", closeFocusModal);
 
+  var btnFocusStartTomorrow = document.getElementById("btn-focus-start-tomorrow");
+  if (btnFocusStartTomorrow) btnFocusStartTomorrow.addEventListener("click", function() {
+    focusDateMode = "tomorrow";
+    renderFocus(loadDailyPlan());
+    inizializzaFocusPage();
+  });
+
+  var btnCloseUpgrade = document.getElementById("btn-close-upgrade");
+  if (btnCloseUpgrade) btnCloseUpgrade.addEventListener("click", closeUpgradeModal);
+
+  var btnUpgradeLater = document.getElementById("btn-upgrade-later");
+  if (btnUpgradeLater) btnUpgradeLater.addEventListener("click", closeUpgradeModal);
+
+  var btnUpgradeBillingYearly = document.getElementById("btn-upgrade-billing-yearly");
+  if (btnUpgradeBillingYearly) btnUpgradeBillingYearly.addEventListener("click", function() {
+    setUpgradeBillingInterval("yearly");
+  });
+
+  var btnUpgradeBillingMonthly = document.getElementById("btn-upgrade-billing-monthly");
+  if (btnUpgradeBillingMonthly) btnUpgradeBillingMonthly.addEventListener("click", function() {
+    setUpgradeBillingInterval("monthly");
+  });
+
+  var btnUpgradeCta = document.getElementById("btn-upgrade-cta");
+  if (btnUpgradeCta) btnUpgradeCta.addEventListener("click", function() {
+    createStripeCheckoutSession(selectedUpgradeBillingInterval, btnUpgradeCta);
+  });
+
+  var btnOpenUpgradeModal = document.getElementById("btn-open-upgrade-modal");
+  if (btnOpenUpgradeModal) btnOpenUpgradeModal.addEventListener("click", function() {
+    openUpgradeModal({
+      title: "Sblocca FloMind Pro",
+      copy: "Attiva il piano mensile o annuale con Stripe Checkout. Hai 7 giorni di prova gratuita prima del primo addebito."
+    });
+  });
+
+  var btnManageBilling = document.getElementById("btn-manage-billing");
+  if (btnManageBilling) btnManageBilling.addEventListener("click", function() {
+    openStripeCustomerPortal(btnManageBilling);
+  });
+
   var btnSaveSettings = document.getElementById("btn-save-settings");
   if (btnSaveSettings) btnSaveSettings.addEventListener("click", saveSettingsModal);
+
+  var btnSettingsChangePhoto = document.getElementById("btn-settings-change-photo");
+  if (btnSettingsChangePhoto) btnSettingsChangePhoto.addEventListener("click", function() {
+    var hiddenFileInput = document.getElementById("settings-image-file-input");
+    if (hiddenFileInput) hiddenFileInput.click();
+  });
 
   var fileInput = document.getElementById("settings-image-file-input");
   if (fileInput) fileInput.addEventListener("change", function(event) {
     var file = event.target.files && event.target.files[0];
     if (!file) {
       pendingSettingsImageDataUrl = "";
+      updateSettingsProfilePreview(getCurrentAppUser(), document.getElementById("settings-name-input") ? document.getElementById("settings-name-input").value : "");
       return;
     }
 
     var reader = new FileReader();
     reader.onload = function(loadEvent) {
       pendingSettingsImageDataUrl = typeof loadEvent.target.result === "string" ? loadEvent.target.result : "";
+      updateSettingsProfilePreview(getCurrentAppUser(), document.getElementById("settings-name-input") ? document.getElementById("settings-name-input").value : "");
     };
     reader.readAsDataURL(file);
+  });
+
+  var settingsNameInput = document.getElementById("settings-name-input");
+  if (settingsNameInput) settingsNameInput.addEventListener("input", function() {
+    updateSettingsProfilePreview(getCurrentAppUser(), settingsNameInput.value);
   });
 
   var systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
@@ -4549,6 +5896,7 @@ document.addEventListener("DOMContentLoaded", function() {
       closeAccountMenu();
       closeSettingsModal();
       closeFocusModal();
+      closeUpgradeModal();
     }
   });
 

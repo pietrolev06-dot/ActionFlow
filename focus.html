@@ -3,14 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Focus | ActionFlow</title>
+  <title>Focus | FloMind</title>
+  <meta name="application-name" content="FloMind" />
+  <meta name="apple-mobile-web-app-title" content="FloMind" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="container focus-page-shell">
     <header class="page-header">
       <div>
-        <p class="page-kicker">ActionFlow</p>
+        <p class="page-kicker">FloMind</p>
         <h1 class="page-title">Adesso</h1>
         <p id="focus-sommario" class="page-subtitle focus-page-subtitle">Solo quello che conta adesso.</p>
       </div>
@@ -50,13 +52,14 @@
     </section>
 
     <section id="focus-empty-state" class="sezione focus-empty-state nascosto">
-      <h2>Nothing to do right now</h2>
-      <p class="page-subtitle">Organizza la giornata dalla home per vedere qui il prossimo task.</p>
-      <a class="page-back-link page-back-link-primary" href="index.html">Vai alla home</a>
+      <h2>Nessun task per oggi</h2>
+      <p class="page-subtitle">Vuoi iniziare da domani?</p>
+      <button id="btn-focus-start-tomorrow" class="home-primary-action" type="button">Inizia da domani</button>
     </section>
   </div>
 
   <script src="authClient.js"></script>
+  <script src="habits.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

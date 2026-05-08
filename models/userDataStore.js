@@ -12,6 +12,7 @@ const SCOPED_KEYS = [
   "actionflow_daily_plan",
   "actionflow_azioni_done",
   "actionflow_checklist_done",
+  "actionflow_analysis_usage",
 ];
 
 function ensureStorageFile() {

@@ -10,13 +10,13 @@ if (hasLocalEnvFile) {
   const dotenvResult = dotenv.config({ path: envPath });
 
   if (dotenvResult.error) {
-    console.warn("[ActionFlow] key.env trovato ma non caricato correttamente da %s", envPath);
-    console.warn("[ActionFlow] Dettaglio:", dotenvResult.error.message);
+    console.warn("[FloMind] key.env trovato ma non caricato correttamente da %s", envPath);
+    console.warn("[FloMind] Dettaglio:", dotenvResult.error.message);
   } else {
-    console.log("[ActionFlow] key.env caricato da %s", envPath);
+    console.log("[FloMind] key.env caricato da %s", envPath);
   }
 } else {
-  console.log("[ActionFlow] key.env non trovato in %s, uso solo variabili d'ambiente.", envPath);
+  console.log("[FloMind] key.env non trovato in %s, uso solo variabili d'ambiente.", envPath);
 }
 
 function maskApiKey(apiKey) {
@@ -32,14 +32,14 @@ function maskApiKey(apiKey) {
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || "").trim();
 
 console.log(
-  "[ActionFlow] OPENAI_API_KEY presente: %s | lunghezza: %d | preview: %s",
+  "[FloMind] OPENAI_API_KEY presente: %s | lunghezza: %d | preview: %s",
   OPENAI_API_KEY ? "si" : "no",
   OPENAI_API_KEY.length,
   maskApiKey(OPENAI_API_KEY)
 );
 
 if (!OPENAI_API_KEY) {
-  console.error("[ActionFlow] ERRORE: OPENAI_API_KEY non trovata o vuota nelle variabili d'ambiente. Avvio bloccato.");
+  console.error("[FloMind] ERRORE: OPENAI_API_KEY non trovata o vuota nelle variabili d'ambiente. Avvio bloccato.");
   process.exit(1);
 }
 
@@ -47,10 +47,15 @@ const express = require("express");
 const OpenAI = require("openai").default;
 const crypto = require("crypto");
 const { createAuthRouter } = require("./auth/authRoutes");
+const {
+  createBillingRouter,
+  createStripeWebhookHandler,
+} = require("./billing/billingRoutes");
 const { createCalendarRouter } = require("./calendar/calendarRoutes");
 const { createSessionMiddleware } = require("./auth/sessionStore");
 const { attachCurrentUser } = require("./auth/userSessionMiddleware");
 const { getUserStorage, setUserStorage } = require("./models/userDataStore");
+const appConfig = require("./appConfig");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -65,12 +70,28 @@ app.use((req, res, next) => {
 });
 
 // --- Middleware ---
+app.post("/api/billing/webhook", express.raw({ type: "application/json" }), createStripeWebhookHandler());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(createSessionMiddleware());
 app.use(attachCurrentUser);
 console.log("[DEBUG] Mounting /auth router");
+app.use("/auth", (req, res, next) => {
+  if (appConfig.BETA_DISABLE_EXTERNAL_SERVICES && (req.path === "/google" || req.path === "/apple")) {
+    return res.redirect("/login?betaExternalServicesDisabled=1");
+  }
+
+  return next();
+});
 app.use("/auth", createAuthRouter());
+app.use("/api/billing", (req, res, next) => {
+  if (appConfig.BETA_DISABLE_EXTERNAL_SERVICES) {
+    return res.status(503).json({ error: appConfig.BETA_DISABLED_MESSAGE });
+  }
+
+  return next();
+});
+app.use("/api/billing", createBillingRouter());
 app.use("/calendar", createCalendarRouter());
 app.use(express.static(PROJECT_ROOT));
 
@@ -91,6 +112,12 @@ app.get("/__diag", (req, res) => {
     hasGoogleClientSecret: Boolean((process.env.GOOGLE_CLIENT_SECRET || "").trim()),
     hasGoogleRedirectUri: Boolean((process.env.GOOGLE_REDIRECT_URI || "").trim()),
     hasSessionSecret: Boolean((process.env.SESSION_SECRET || "").trim()),
+    hasStripeSecretKey: Boolean((process.env.STRIPE_SECRET_KEY || "").trim()),
+    hasStripeWebhookSecret: Boolean((process.env.STRIPE_WEBHOOK_SECRET || "").trim()),
+    hasStripePriceMonthly: Boolean((process.env.STRIPE_PRICE_MONTHLY || "").trim()),
+    hasStripePriceYearly: Boolean((process.env.STRIPE_PRICE_YEARLY || "").trim()),
+    hasAppBaseUrl: Boolean((process.env.APP_BASE_URL || "").trim()),
+    betaDisableExternalServices: appConfig.BETA_DISABLE_EXTERNAL_SERVICES === true,
     timestamp: new Date().toISOString(),
   });
 });
@@ -140,6 +167,10 @@ app.get("/organizza-giornata", (req, res) => {
 
 app.get("/dashboard", (req, res) => {
   res.sendFile(path.join(PROJECT_ROOT, "dashboard.html"));
+});
+
+app.get("/habits", (req, res) => {
+  res.sendFile(path.join(PROJECT_ROOT, "habits.html"));
 });
 
 app.get("/checklist", (req, res) => {
@@ -391,7 +422,7 @@ app.post("/api/analyze", async (req, res) => {
 
     return res.json(parsed);
   } catch (err) {
-    console.error("[ActionFlow] Errore OpenAI:", err.message || err);
+    console.error("[FloMind] Errore OpenAI:", err.message || err);
 
     if (err instanceof OpenAI.APIError) {
       return res.status(err.status || 502).json({
@@ -449,5 +480,5 @@ function printRegisteredRoutes() {
 
 app.listen(PORT, () => {
   printRegisteredRoutes();
-  console.log(`[ActionFlow] Server avviato su http://localhost:${PORT}`);
+  console.log(`[FloMind] Server avviato su http://localhost:${PORT}`);
 });

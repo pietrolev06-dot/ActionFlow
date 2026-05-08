@@ -1,35 +1,104 @@
+const fs = require("fs");
+const path = require("path");
 const { createUser } = require("../auth/authHelpers");
 
-const users = [];
+const USERS_PATH = path.join(__dirname, "..", "data", "users.json");
+
+function ensureUsersFile() {
+  fs.mkdirSync(path.dirname(USERS_PATH), { recursive: true });
+
+  if (!fs.existsSync(USERS_PATH)) {
+    fs.writeFileSync(USERS_PATH, JSON.stringify([], null, 2), "utf8");
+  }
+}
+
+function readUsers() {
+  ensureUsersFile();
+
+  try {
+    const raw = fs.readFileSync(USERS_PATH, "utf8");
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeUsers(users) {
+  ensureUsersFile();
+  fs.writeFileSync(USERS_PATH, JSON.stringify(Array.isArray(users) ? users : [], null, 2), "utf8");
+}
+
+function cloneUser(user) {
+  return user && typeof user === "object" ? { ...user } : null;
+}
+
+function saveUserList(users) {
+  writeUsers(users);
+  return users;
+}
 
 function addUser(userInput) {
+  const users = readUsers();
   const user = createUser(userInput);
   users.push(user);
-  return user;
+  saveUserList(users);
+  return cloneUser(user);
 }
 
 function getAllUsers() {
-  return [...users];
+  return readUsers().map(cloneUser);
 }
 
 function findUserByProvider(provider, providerUserId) {
-  return users.find(
-    (user) =>
-      user.provider === provider && user.providerUserId === providerUserId
-  ) || null;
+  return cloneUser(
+    readUsers().find(
+      (user) =>
+        user.provider === provider && user.providerUserId === providerUserId
+    ) || null
+  );
 }
 
 function findUserById(userId) {
-  return users.find((user) => user.id === userId) || null;
+  return cloneUser(readUsers().find((user) => user.id === userId) || null);
+}
+
+function findUserByStripeCustomerId(stripeCustomerId) {
+  if (!stripeCustomerId) {
+    return null;
+  }
+
+  return cloneUser(
+    readUsers().find((user) => user.stripeCustomerId === stripeCustomerId) || null
+  );
+}
+
+function updateUser(userId, updater) {
+  const users = readUsers();
+  const index = users.findIndex((user) => user.id === userId);
+
+  if (index === -1) {
+    return null;
+  }
+
+  const currentUser = users[index];
+  const nextUser = updater({ ...currentUser }) || currentUser;
+  users[index] = nextUser;
+  saveUserList(users);
+  return cloneUser(nextUser);
 }
 
 function findOrCreateUser(userInput) {
-  const existingUser = findUserByProvider(
-    userInput.provider,
-    userInput.providerUserId
+  const users = readUsers();
+  const existingIndex = users.findIndex(
+    (user) =>
+      user.provider === userInput.provider &&
+      user.providerUserId === userInput.providerUserId
   );
 
-  if (existingUser) {
+  if (existingIndex !== -1) {
+    const existingUser = users[existingIndex];
+
     if (userInput.name !== undefined) {
       existingUser.name = userInput.name;
     }
@@ -38,47 +107,97 @@ function findOrCreateUser(userInput) {
       existingUser.email = userInput.email;
     }
 
+    if (userInput.googleName !== undefined) {
+      existingUser.googleName = userInput.googleName || existingUser.googleName || null;
+    }
+
+    if (userInput.googlePicture !== undefined) {
+      existingUser.googlePicture = userInput.googlePicture || existingUser.googlePicture || null;
+    }
+
     if (userInput.googleTokens !== undefined) {
       existingUser.googleTokens = userInput.googleTokens || existingUser.googleTokens || null;
     }
 
-    return existingUser;
+    if (userInput.displayName !== undefined) {
+      existingUser.displayName = userInput.displayName || existingUser.displayName || null;
+    }
+
+    if (userInput.avatarUrl !== undefined) {
+      existingUser.avatarUrl = userInput.avatarUrl || existingUser.avatarUrl || null;
+    }
+
+    if (userInput.theme !== undefined) {
+      existingUser.theme = userInput.theme || existingUser.theme || "system";
+    }
+
+    if (existingUser.provider === "google") {
+      if (!existingUser.googleName && existingUser.name) {
+        existingUser.googleName = existingUser.name;
+      }
+
+      if (!existingUser.googlePicture && userInput.avatarUrl && !userInput.displayName) {
+        existingUser.googlePicture = userInput.avatarUrl;
+      }
+    }
+
+    saveUserList(users);
+    return cloneUser(existingUser);
   }
 
-  return addUser(userInput);
+  const user = createUser(userInput);
+  users.push(user);
+  saveUserList(users);
+  return cloneUser(user);
 }
 
 function updateUserSettings(userId, settings) {
-  const user = findUserById(userId);
+  return updateUser(userId, (user) => {
+    if (settings.displayName !== undefined) {
+      user.displayName = settings.displayName || null;
+    }
 
-  if (!user) {
-    return null;
-  }
+    if (settings.avatarUrl !== undefined) {
+      user.avatarUrl = settings.avatarUrl || null;
+    }
 
-  if (settings.displayName !== undefined) {
-    user.displayName = settings.displayName || null;
-  }
+    if (settings.theme !== undefined) {
+      user.theme = settings.theme || "system";
+    }
 
-  if (settings.avatarUrl !== undefined) {
-    user.avatarUrl = settings.avatarUrl || null;
-  }
-
-  if (settings.theme !== undefined) {
-    user.theme = settings.theme || "system";
-  }
-
-  return user;
+    return user;
+  });
 }
 
 function updateUserGoogleTokens(userId, googleTokens) {
-  const user = findUserById(userId);
+  return updateUser(userId, (user) => {
+    user.googleTokens = googleTokens || null;
+    return user;
+  });
+}
 
-  if (!user) {
-    return null;
-  }
+function updateUserStripeBilling(userId, billing) {
+  return updateUser(userId, (user) => {
+    user.stripeCustomerId = billing && billing.stripeCustomerId ? billing.stripeCustomerId : user.stripeCustomerId || null;
+    user.stripeSubscriptionId = billing && Object.prototype.hasOwnProperty.call(billing, "stripeSubscriptionId")
+      ? billing.stripeSubscriptionId
+      : (user.stripeSubscriptionId || null);
+    user.stripeSubscriptionStatus = billing && Object.prototype.hasOwnProperty.call(billing, "stripeSubscriptionStatus")
+      ? billing.stripeSubscriptionStatus
+      : (user.stripeSubscriptionStatus || null);
+    user.stripePriceId = billing && Object.prototype.hasOwnProperty.call(billing, "stripePriceId")
+      ? billing.stripePriceId
+      : (user.stripePriceId || null);
+    user.billingInterval = billing && Object.prototype.hasOwnProperty.call(billing, "billingInterval")
+      ? billing.billingInterval
+      : (user.billingInterval || null);
 
-  user.googleTokens = googleTokens || null;
-  return user;
+    if (billing && Object.prototype.hasOwnProperty.call(billing, "plan")) {
+      user.plan = billing.plan === "pro" ? "pro" : "free";
+    }
+
+    return user;
+  });
 }
 
 function getUserGoogleTokens(userId) {
@@ -90,9 +209,11 @@ module.exports = {
   addUser,
   findUserById,
   findUserByProvider,
+  findUserByStripeCustomerId,
   findOrCreateUser,
   getUserGoogleTokens,
   getAllUsers,
   updateUserGoogleTokens,
   updateUserSettings,
+  updateUserStripeBilling,
 };

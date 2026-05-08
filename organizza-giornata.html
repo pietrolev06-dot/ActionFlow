@@ -3,20 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Organizza giornata | ActionFlow</title>
+  <title>Organizza giornata | FloMind</title>
+  <meta name="application-name" content="FloMind" />
+  <meta name="apple-mobile-web-app-title" content="FloMind" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="container daily-plan-page-shell">
     <header class="page-header daily-plan-page-header">
       <div>
-        <p class="page-kicker">ActionFlow</p>
+        <p class="page-kicker">FloMind</p>
         <h1 class="page-title">Organizza giornata</h1>
         <p id="piano-giornaliero-sommario" class="page-subtitle daily-plan-page-subtitle">Distribuisci i task della giornata in uno spazio più pulito e focalizzato.</p>
       </div>
 
       <div class="daily-plan-page-actions">
-        <button id="btn-rigenera-piano" class="home-secondary-action daily-plan-refresh-button" type="button">Rigenera piano</button>
         <a class="page-back-link" href="/">Torna alla home</a>
       </div>
     </header>
@@ -35,11 +36,6 @@
           <ul id="lista-pomeriggio"></ul>
         </div>
 
-        <div id="blocco-resta-da-fare-oggi" class="piano-blocco piano-blocco-resta-oggi nascosto">
-          <h3>Resta da fare oggi</h3>
-          <ul id="lista-resta-da-fare-oggi"></ul>
-        </div>
-
         <div id="blocco-se-avanza-tempo" class="piano-blocco piano-blocco-extra nascosto">
           <h3>Se avanza tempo</h3>
           <ul id="lista-se-avanza-tempo"></ul>
@@ -49,6 +45,7 @@
   </div>
 
   <script src="authClient.js"></script>
+  <script src="habits.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

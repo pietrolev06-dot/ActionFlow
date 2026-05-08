@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Habits | FloMind</title>
+  <meta name="application-name" content="FloMind" />
+  <meta name="apple-mobile-web-app-title" content="FloMind" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="container habits-page-shell">
+    <header class="page-header habits-page-header">
+      <div>
+        <p class="page-kicker">FloMind</p>
+        <h1 class="page-title">Habits</h1>
+        <p class="page-subtitle">Gestisci le tue abitudini ricorrenti</p>
+      </div>
+
+      <div class="habits-page-actions">
+        <a class="page-back-link" href="/">Torna alla home</a>
+        <button type="button" id="habit-new-button" class="habit-new-button">Nuova habit</button>
+      </div>
+    </header>
+
+    <section id="habit-form-card" class="sezione habits-form-card nascosto" aria-label="Form habit">
+      <button type="button" id="habit-form-close-button" class="habit-form-close-button" aria-label="Chiudi form habit">×</button>
+
+      <div class="habits-form-head">
+        <div>
+          <p class="habits-form-eyebrow">Creazione rapida</p>
+          <p>Inserisci solo l'essenziale. FloMind stimerà il resto quando serve.</p>
+        </div>
+      </div>
+
+      <form id="habit-form" class="habit-form">
+        <label class="habit-title-input-field">
+          <input type="text" id="habit-title" name="title" placeholder="Titolo habit" aria-label="Titolo habit" required />
+        </label>
+
+        <div class="habit-form-section habit-field-wide">
+          <div class="habit-core-grid">
+            <label class="habit-field">
+              <span>Frequenza</span>
+              <select id="habit-frequency" name="frequency" required>
+                <option value="daily">Ogni giorno</option>
+                <option value="specific_weekdays">Giorni specifici</option>
+                <option value="weekly">Ogni settimana</option>
+              </select>
+            </label>
+
+            <label class="habit-field">
+              <span>Importanza</span>
+              <select id="habit-importance" name="importance" required>
+                <option value="alta">Alta</option>
+                <option value="media" selected>Media</option>
+                <option value="bassa">Bassa</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <details id="habit-advanced" class="habit-advanced habit-field-wide">
+          <summary class="habit-advanced-summary">
+            <div>
+              <h3>Preferenze avanzate</h3>
+              <p>Durata, energia, giorni specifici, orario e note.</p>
+            </div>
+            <span id="habit-advanced-summary-label" class="habit-advanced-summary-indicator">APRI</span>
+          </summary>
+          <div class="habit-advanced-body">
+            <div class="habit-advanced-group">
+              <div class="habit-advanced-grid">
+                <label class="habit-field">
+                  <span>Durata</span>
+                  <select id="habit-duration" name="estimatedDurationMinutes">
+                    <option value="" selected>Automatica</option>
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">1 ora</option>
+                    <option value="120">2 ore</option>
+                  </select>
+                </label>
+
+                <label class="habit-field">
+                  <span>Energia</span>
+                  <select id="habit-energy">
+                    <option value="">Automatica</option>
+                    <option value="bassa">Bassa</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="habit-advanced-group habit-weekdays-group nascosto">
+              <fieldset class="habit-weekdays nascosto" id="habit-weekdays">
+                <legend>Giorni specifici</legend>
+                <label><input type="checkbox" value="1" /> Lun</label>
+                <label><input type="checkbox" value="2" /> Mar</label>
+                <label><input type="checkbox" value="3" /> Mer</label>
+                <label><input type="checkbox" value="4" /> Gio</label>
+                <label><input type="checkbox" value="5" /> Ven</label>
+                <label><input type="checkbox" value="6" /> Sab</label>
+                <label><input type="checkbox" value="0" /> Dom</label>
+              </fieldset>
+            </div>
+
+            <div class="habit-advanced-group">
+              <label class="habit-fixed-toggle habit-field-wide">
+                <input type="checkbox" id="habit-fixed-schedule" />
+                <span>Programma a un orario preciso</span>
+              </label>
+
+              <div class="habit-fixed-fields habit-field-wide nascosto" id="habit-fixed-fields">
+                <label class="habit-field">
+                  <span>Ora di inizio</span>
+                  <input type="time" id="habit-fixed-start" />
+                </label>
+              </div>
+            </div>
+
+            <div class="habit-advanced-group">
+              <label class="habit-field habit-field-wide">
+                <span>Note</span>
+                <textarea id="habit-notes" rows="3" placeholder="Dettagli opzionali"></textarea>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <div class="habit-form-actions habit-field-wide">
+          <button type="submit" id="habit-submit-button" class="habit-submit-button">Salva habit</button>
+          <p id="habit-form-status" class="habit-form-status" aria-live="polite"></p>
+        </div>
+      </form>
+    </section>
+
+    <section class="sezione habits-list-card" aria-labelledby="habits-list-heading">
+      <div class="dashboard-section-header">
+        <div>
+          <h2 id="habits-list-heading">Le tue habit</h2>
+          <p class="dashboard-section-copy">Una lista semplice delle ricorrenze attive.</p>
+        </div>
+      </div>
+
+      <div id="habits-list" class="habits-list"></div>
+      <div id="habits-empty" class="habits-empty-state nascosto">
+        <h3>Ancora nessuna habit</h3>
+        <p>Crea una ricorrenza semplice e lasciala vivere qui, senza duplicare task.</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="authClient.js"></script>
+  <script src="habits.js"></script>
+  <script src="habitsPage.js"></script>
+
+</body>
+</html>

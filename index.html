@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ActionFlow</title>
+  <title>FloMind</title>
+  <meta name="application-name" content="FloMind" />
+  <meta name="apple-mobile-web-app-title" content="FloMind" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -13,7 +15,7 @@
     <header class="home-header">
       <div class="home-topbar">
         <div class="home-brand-row">
-          <h1>Action<span class="brand-accent">Flow</span></h1>
+          <h1>Flo<span class="brand-accent">Mind</span></h1>
           <p id="home-greeting-text" class="home-title-greeting">Ciao, cosa vuoi fare oggi?</p>
         </div>
 
@@ -25,6 +27,10 @@
               </svg>
             </span>
             <span>Attività</span>
+          </button>
+
+          <button id="bottone-habits" class="home-topbar-link" type="button" onclick="window.location.href='habits.html'">
+            <span>Habits</span>
           </button>
 
           <div class="account-menu-shell">
@@ -71,7 +77,7 @@
     <main class="home-main">
       <section class="composer-card home-composer-card">
         <div class="voice-input-wrap composer-input-wrap home-input-wrap">
-          <textarea id="testo-input" placeholder="Scrivi qui quello che devi fare, oppure parla. Esempio: domani devo chiamare Marco"></textarea>
+          <textarea id="testo-input" placeholder="Es: domani devo chiamare Marco"></textarea>
           <button id="bottone-microfono" class="voice-button" type="button" onclick="startVoiceInput()" aria-label="Avvia input vocale" title="Input vocale">
             <span class="ui-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false">
@@ -81,8 +87,6 @@
             </span>
           </button>
         </div>
-
-        <p class="composer-helper">Scrivi o parla in modo naturale.</p>
 
         <div id="messaggio-errore" class="errore nascosto">
           Scrivi qualcosa nel campo di testo prima di continuare.
@@ -155,43 +159,71 @@
         <div class="modal-header">
           <div>
             <h2 id="settings-modal-title">Impostazioni</h2>
-            <p class="page-subtitle">Aggiorna il nome visualizzato e l'immagine profilo solo in locale.</p>
+            <p class="page-subtitle">Gestisci profilo, piano e preferenze dell'account.</p>
           </div>
           <button id="btn-close-settings" class="modal-close-button" type="button" aria-label="Chiudi impostazioni">Chiudi</button>
         </div>
 
         <div class="settings-form">
-          <label class="settings-field">
-            <span>Nome</span>
-            <input id="settings-name-input" class="edit-input edit-input-testo" type="text" autocomplete="name" />
-          </label>
+          <div class="settings-billing-card">
+            <div class="settings-billing-copy">
+              <span class="settings-billing-label">Piano attuale</span>
+              <strong id="settings-current-plan">Free</strong>
+              <small>FloMind Pro include tutte le funzioni premium, con 7 giorni di prova gratuita.</small>
+            </div>
 
-          <label class="settings-field">
-            <span>Immagine profilo (URL)</span>
-            <input id="settings-image-url-input" class="edit-input edit-input-testo" type="url" placeholder="https://..." />
-          </label>
+            <div class="settings-billing-actions">
+              <button id="btn-open-upgrade-modal" class="home-primary-action settings-upgrade-button" type="button">Passa a Pro</button>
+              <button id="btn-manage-billing" class="home-secondary-action settings-manage-billing-button nascosto" type="button">Gestisci abbonamento</button>
+            </div>
+          </div>
 
-          <label class="settings-field">
-            <span>Immagine profilo (file)</span>
-            <input id="settings-image-file-input" class="edit-input" type="file" accept="image/*" />
-          </label>
+          <section class="settings-profile-card" aria-labelledby="settings-profile-title">
+            <div class="settings-section-heading">
+              <span class="settings-billing-label">Profilo</span>
+              <strong id="settings-profile-title">Informazioni account</strong>
+            </div>
 
-          <label class="settings-field">
-            <span>Tema</span>
-            <select id="settings-theme-select" class="edit-select">
-              <option value="system">Sistema</option>
-              <option value="light">Chiaro</option>
-              <option value="dark">Scuro</option>
-            </select>
-          </label>
+            <div class="settings-profile-shell">
+              <div id="settings-avatar-preview" class="profilo-avatar settings-profile-avatar">A</div>
 
-          <label class="settings-field">
-            <span>
-              <input id="settings-calendar-autosync-input" type="checkbox" />
-              Sincronizza automaticamente con Google Calendar
-            </span>
-            <small>I task con data, orario e durata verranno aggiunti automaticamente al calendario.</small>
-          </label>
+              <div class="settings-profile-copy">
+                <strong id="settings-profile-name">Utente</strong>
+                <button id="btn-settings-change-photo" class="home-secondary-action settings-change-photo-button" type="button">Cambia foto</button>
+              </div>
+            </div>
+
+            <input id="settings-image-file-input" class="nascosto" type="file" accept="image/*" />
+
+            <label class="settings-field settings-name-field">
+              <span>Nome</span>
+              <input id="settings-name-input" class="edit-input edit-input-testo" type="text" autocomplete="name" />
+            </label>
+          </section>
+
+          <section class="settings-preferences-card" aria-labelledby="settings-preferences-title">
+            <div class="settings-section-heading">
+              <span class="settings-billing-label">Preferenze</span>
+              <strong id="settings-preferences-title">Personalizza l'esperienza</strong>
+            </div>
+
+            <label class="settings-field">
+              <span>Tema</span>
+              <select id="settings-theme-select" class="edit-select">
+                <option value="system">Sistema</option>
+                <option value="light">Chiaro</option>
+                <option value="dark">Scuro</option>
+              </select>
+            </label>
+
+            <label class="settings-field settings-calendar-field">
+              <span>
+                <input id="settings-calendar-autosync-input" type="checkbox" />
+                Sync automatico con Google Calendar
+              </span>
+              <small>I task con data, orario e durata verranno aggiunti automaticamente al calendario.</small>
+            </label>
+          </section>
 
           <div class="settings-actions">
             <button id="btn-save-settings" class="home-primary-action settings-save-button" type="button">Salva</button>
@@ -246,14 +278,72 @@
         </section>
 
         <section id="focus-empty-state" class="sezione focus-empty-state nascosto">
-          <h2>Nessun task in evidenza</h2>
-          <p class="page-subtitle">Organizza la giornata per vedere qui il prossimo passo utile.</p>
+          <h2>Nessun task per oggi</h2>
+          <p class="page-subtitle">Vuoi iniziare da domani?</p>
+          <button id="btn-focus-start-tomorrow" class="home-primary-action" type="button">Inizia da domani</button>
         </section>
       </div>
     </div>
   </div>
 
+  <div id="modal-upgrade" class="modal-overlay nascosto" aria-hidden="true">
+    <div class="modal-shell modal-upgrade-shell" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
+      <div class="sezione modal-section upgrade-modal-section">
+        <div class="modal-header">
+          <div>
+            <p class="page-kicker">FloMind Pro</p>
+            <h2 id="upgrade-modal-title">Sblocca FloMind Pro</h2>
+            <p id="upgrade-modal-copy" class="page-subtitle">Scegli il piano Pro che preferisci. Checkout Stripe sicuro, prova gratuita di 7 giorni e gestione autonoma dell'abbonamento.</p>
+          </div>
+          <button id="btn-close-upgrade" class="modal-close-button" type="button" aria-label="Chiudi upgrade">Chiudi</button>
+        </div>
+
+        <div class="upgrade-plan-grid" aria-label="Piani disponibili">
+          <article class="upgrade-plan-card upgrade-plan-free">
+            <span class="upgrade-plan-name">Free</span>
+            <strong class="upgrade-plan-price">€0</strong>
+            <ul class="upgrade-feature-list">
+              <li>5 analisi al giorno</li>
+              <li>Organizza giornata base</li>
+              <li>Dashboard completa</li>
+            </ul>
+            <button id="btn-upgrade-later" class="home-secondary-action upgrade-free-button" type="button">Resta Free</button>
+          </article>
+
+          <article class="upgrade-plan-card upgrade-plan-pro">
+            <span class="upgrade-plan-name">Pro</span>
+            <div class="upgrade-billing-toggle" role="tablist" aria-label="Frequenza di fatturazione">
+              <button id="btn-upgrade-billing-monthly" class="upgrade-billing-option is-selected" type="button" aria-pressed="true">Mensile</button>
+              <button id="btn-upgrade-billing-yearly" class="upgrade-billing-option" type="button" aria-pressed="false">Annuale</button>
+            </div>
+
+            <div class="upgrade-price-stack">
+              <div class="upgrade-price-row">
+                <strong id="upgrade-pro-price" class="upgrade-plan-price">€5<span>/mese</span></strong>
+                <span id="upgrade-pro-savings-inline" class="upgrade-savings-badge nascosto">Risparmi 33%</span>
+              </div>
+              <p id="upgrade-pro-secondary-price" class="upgrade-secondary-price nascosto">€3.33/mese</p>
+            </div>
+
+            <ul class="upgrade-feature-list upgrade-feature-list-pro">
+              <li>Analisi illimitate</li>
+              <li>Organizza giornata intelligente</li>
+              <li>Focus</li>
+              <li>Integrazione calendario</li>
+              <li>Sync multi-device</li>
+            </ul>
+
+            <p class="upgrade-trial-badge">Prova gratuita di 7 giorni inclusa</p>
+            <button id="btn-upgrade-cta" class="home-primary-action upgrade-modal-primary" type="button">Inizia Pro mensile</button>
+          </article>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="appConfig.js"></script>
   <script src="authClient.js"></script>
+  <script src="habits.js"></script>
   <script src="script.js"></script>
 
 </body>

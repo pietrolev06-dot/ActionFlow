@@ -5,8 +5,7 @@
     ["drop2action_archivio_scadenze", "actionflow_archivio_scadenze"],
     ["drop2action_checklist", "actionflow_checklist"],
     ["drop2action_scadenze", "actionflow_scadenze"],
-    ["drop2action_azioni_done", "actionflow_azioni_done"],
-    ["drop2action_profilo", "actionflow_profilo"]
+    ["drop2action_azioni_done", "actionflow_azioni_done"]
   ];
   for (var i = 0; i < m.length; i++) {
     if (!localStorage.getItem(m[i][1]) && localStorage.getItem(m[i][0])) {
@@ -218,17 +217,35 @@ function readDashboardGuestUser() {
   try {
     var raw = localStorage.getItem("actionflow_guest_user");
     var parsed = raw ? JSON.parse(raw) : null;
+    var profileRaw = localStorage.getItem("flomind_guest_profile");
 
-    if (!parsed || typeof parsed !== "object" || !parsed.name) {
+    if ((!parsed || typeof parsed !== "object") && !profileRaw) {
+      return null;
+    }
+
+    var profile = profileRaw ? JSON.parse(profileRaw) : null;
+    var legacyRaw = localStorage.getItem("actionflow_profilo");
+    var legacyProfile = legacyRaw ? JSON.parse(legacyRaw) : null;
+    var displayName = profile && typeof profile.displayName === "string" && profile.displayName.trim()
+      ? profile.displayName.trim()
+      : (parsed && typeof parsed.name === "string" ? parsed.name.trim() : "");
+    var avatarDataUrl = profile && typeof profile.avatarDataUrl === "string"
+      ? profile.avatarDataUrl
+      : (legacyProfile && typeof legacyProfile.avatarDataUrl === "string" ? legacyProfile.avatarDataUrl : "");
+
+    if (!displayName) {
       return null;
     }
 
     return {
-      id: parsed.id || "guest-local",
+      id: parsed && parsed.id ? parsed.id : "guest-local",
       provider: "guest",
-      providerUserId: parsed.id || "guest-local",
-      name: parsed.name,
-      email: null
+      providerUserId: parsed && parsed.id ? parsed.id : "guest-local",
+      name: displayName,
+      displayName: displayName,
+      email: null,
+      avatarUrl: avatarDataUrl,
+      avatarDataUrl: avatarDataUrl
     };
   } catch (e) {
     return null;
@@ -248,12 +265,24 @@ function getDashboardEffectiveUserProfile(user) {
 
   var merged = Object.assign({}, user);
 
+  if (!merged.googleName && merged.provider === "google" && merged.name) {
+    merged.googleName = merged.name;
+  }
+
+  if (!merged.googlePicture && merged.provider === "google" && merged.picture) {
+    merged.googlePicture = merged.picture;
+  }
+
   if (merged.displayName) {
     merged.name = merged.displayName;
+  } else if (merged.googleName) {
+    merged.name = merged.googleName;
   }
 
   if (merged.avatarUrl) {
     merged.picture = merged.avatarUrl;
+  } else if (merged.googlePicture) {
+    merged.picture = merged.googlePicture;
   }
 
   return merged;
@@ -649,9 +678,26 @@ function isDashboardTaskScheduled(task) {
   return !!(resolved && resolved.dataISO);
 }
 
+function isDashboardTaskMissingDateValue(value) {
+  var normalized = normalizeText(value || "");
+  return !normalized || normalized === "nessuna";
+}
+
 function isDashboardTaskFlexible(task) {
   var resolved = resolveTaskForDisplay(task);
-  return !!(resolved && !resolved.dataISO && normalizeText(resolved.scadenzaOriginale || ""));
+  if (!resolved || resolved.dataISO) return false;
+
+  if (isDashboardTaskMissingDateValue(resolved.scadenzaOriginale)) {
+    return true;
+  }
+
+  return !!normalizeText(resolved.scadenzaOriginale || "");
+}
+
+function isDashboardTaskOverdue(task) {
+  var resolved = resolveTaskForDisplay(task);
+  var giorni = getTaskDaysFromToday(resolved && resolved.dataISO ? resolved.dataISO : null);
+  return giorni !== null && giorni < 0;
 }
 
 function buildDashboardTaskItem(az, completate, sectionKey, indexInSection) {
@@ -942,9 +988,14 @@ function renderDashboardAzioni() {
   var azioniDaProgrammare = [];
 
   for (var i = 0; i < azioni.length; i++) {
+    var taskId = generaIdAzione(azioni[i].testo);
+    if (completate[taskId] === true) {
+      continue;
+    }
+
     if (isDashboardTaskScheduled(azioni[i])) {
       azioniConScadenza.push(azioni[i]);
-    } else if (isDashboardTaskFlexible(azioni[i])) {
+    } else if (isDashboardTaskFlexible(azioni[i]) || isDashboardTaskOverdue(azioni[i])) {
       azioniDaProgrammare.push(azioni[i]);
     }
   }
@@ -1104,6 +1155,15 @@ function inizializzaFiltri() {
   var gruppoPriorita = document.getElementById("filtro-priorita");
   var gruppoStato = document.getElementById("filtro-stato");
   var checkScadenza = document.getElementById("filtro-scadenza");
+  var filtersPanel = document.querySelector(".dashboard-filters-panel");
+  var filtersToggleLabel = document.querySelector(".dashboard-filters-summary-indicator");
+
+  function aggiornaEtichettaFiltri() {
+    var isOpen = !!(filtersPanel && filtersPanel.open);
+    if (filtersToggleLabel) {
+      filtersToggleLabel.textContent = isOpen ? "Chiudi" : "Apri";
+    }
+  }
 
   function gestisciFiltroGruppo(contenitore, chiave) {
     if (!contenitore) return;
@@ -1127,6 +1187,11 @@ function inizializzaFiltri() {
       filtriAttivi.soloConScadenza = this.checked;
       renderDashboardAzioni();
     });
+  }
+
+  if (filtersPanel) {
+    aggiornaEtichettaFiltri();
+    filtersPanel.addEventListener("toggle", aggiornaEtichettaFiltri);
   }
 }
 

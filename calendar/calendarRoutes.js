@@ -25,6 +25,14 @@ function createCalendarRouter() {
     next();
   });
 
+  router.use((req, res, next) => {
+    if (!req.currentUser || req.currentUser.plan !== "pro") {
+      return res.status(403).json({ error: "L'integrazione Calendar e' disponibile solo con il piano Pro." });
+    }
+
+    next();
+  });
+
   router.get("/events/today", async (req, res) => {
     try {
       const events = await listTodayEvents(req.currentUser.id);

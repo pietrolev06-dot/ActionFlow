@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard | ActionFlow</title>
+  <title>Dashboard | FloMind</title>
+  <meta name="application-name" content="FloMind" />
+  <meta name="apple-mobile-web-app-title" content="FloMind" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -85,7 +87,7 @@
     </section>
 
     <main class="dashboard-layout">
-      <section class="sezione verde dashboard-main-card" id="box-dashboard-azioni" aria-labelledby="dashboard-task-heading">
+      <section class="sezione dashboard-main-card" id="box-dashboard-azioni" aria-labelledby="dashboard-task-heading">
         <div class="dashboard-section-header">
           <div>
             <h2 id="dashboard-task-heading">Tutti i task</h2>
@@ -98,7 +100,7 @@
       </section>
 
       <div class="dashboard-side-column">
-        <aside class="sezione arancio dashboard-side-card" id="box-dashboard-scadenze" aria-labelledby="dashboard-scadenze-heading">
+        <aside class="sezione dashboard-side-card" id="box-dashboard-scadenze" aria-labelledby="dashboard-scadenze-heading">
           <div class="dashboard-section-header">
             <div>
               <h2 id="dashboard-scadenze-heading">Scadenze</h2>
@@ -110,11 +112,11 @@
           <p id="dashboard-scadenze-vuote" class="sottotitolo nascosto">Nessuna scadenza archiviata.</p>
         </aside>
 
-        <aside class="sezione blu dashboard-side-card" id="box-dashboard-riprogrammare" aria-labelledby="dashboard-riprogrammare-heading">
-          <div class="dashboard-section-header">
+        <aside class="sezione dashboard-side-card dashboard-side-card-secondary" id="box-dashboard-riprogrammare" aria-labelledby="dashboard-riprogrammare-heading">
+          <div class="dashboard-section-header dashboard-section-header-secondary">
             <div>
               <h2 id="dashboard-riprogrammare-heading">Da riprogrammare</h2>
-              <p class="dashboard-section-copy">Task flessibili da riportare in agenda.</p>
+              <p class="dashboard-section-copy">Task flessibili o da riprendere in agenda.</p>
             </div>
           </div>
 

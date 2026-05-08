@@ -4,3 +4,7 @@ node_modules/
 key.env
 *.log
 .DS_Store
+data/users.json
+data/user-storage.json
+data/
+data/
