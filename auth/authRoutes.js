@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const {
   AUTH_PROVIDERS,
   buildSessionUser,
@@ -22,8 +23,134 @@ const {
   updateUserSettings,
 } = require("../models/userStore");
 
+const APPLE_STATE_COOKIE_NAME = "flomind.apple_state";
+const APPLE_STATE_TTL_MS = 1000 * 60 * 10;
+const FALLBACK_APPLE_STATE_SECRET = crypto.randomBytes(32).toString("hex");
+
 function redirectToLoginWithAuthError(res, provider) {
   return res.redirect(`/login?authError=${encodeURIComponent(provider)}`);
+}
+
+function parseCookies(cookieHeader = "") {
+  return cookieHeader.split(";").reduce((cookies, part) => {
+    const [rawName, ...rawValueParts] = part.trim().split("=");
+
+    if (!rawName) {
+      return cookies;
+    }
+
+    cookies[rawName] = decodeURIComponent(rawValueParts.join("=") || "");
+    return cookies;
+  }, {});
+}
+
+function getAppleStateSecret() {
+  return (
+    process.env.APPLE_STATE_SECRET ||
+    process.env.SESSION_SECRET ||
+    FALLBACK_APPLE_STATE_SECRET
+  ).trim();
+}
+
+function signAppleState(state, issuedAt) {
+  return crypto
+    .createHmac("sha256", getAppleStateSecret())
+    .update(`${state}.${issuedAt}`)
+    .digest("base64url");
+}
+
+function stateFingerprint(state) {
+  return typeof state === "string" && state
+    ? crypto.createHash("sha256").update(state).digest("hex").slice(0, 12)
+    : null;
+}
+
+function getAppleStateCookieOptions(req) {
+  const isSecureRequest = req.secure || req.get("x-forwarded-proto") === "https";
+  const secure = process.env.NODE_ENV === "production" || isSecureRequest;
+
+  return {
+    httpOnly: true,
+    secure,
+    sameSite: secure ? "none" : "lax",
+    path: "/auth/apple",
+    maxAge: APPLE_STATE_TTL_MS,
+  };
+}
+
+function setAppleStateCookie(req, res, state) {
+  const issuedAt = Date.now();
+  const cookieValue = [
+    Buffer.from(state).toString("base64url"),
+    String(issuedAt),
+    signAppleState(state, issuedAt),
+  ].join(".");
+
+  res.cookie(APPLE_STATE_COOKIE_NAME, cookieValue, getAppleStateCookieOptions(req));
+}
+
+function clearAppleStateCookie(req, res) {
+  const options = getAppleStateCookieOptions(req);
+  res.clearCookie(APPLE_STATE_COOKIE_NAME, {
+    httpOnly: true,
+    secure: options.secure,
+    sameSite: options.sameSite,
+    path: options.path,
+  });
+}
+
+function readAppleStateCookie(req) {
+  const cookies = parseCookies(req.headers.cookie || "");
+  const cookieValue = cookies[APPLE_STATE_COOKIE_NAME];
+
+  if (!cookieValue) {
+    return {
+      valid: false,
+      reason: "missing_cookie",
+      state: null,
+    };
+  }
+
+  const [encodedState, issuedAtRaw, signature] = cookieValue.split(".");
+  const issuedAt = Number(issuedAtRaw);
+
+  if (!encodedState || !issuedAt || !signature) {
+    return {
+      valid: false,
+      reason: "malformed_cookie",
+      state: null,
+    };
+  }
+
+  const state = Buffer.from(encodedState, "base64url").toString("utf8");
+  const expectedSignature = signAppleState(state, issuedAt);
+  const incomingSignature = Buffer.from(signature);
+  const expectedSignatureBuffer = Buffer.from(expectedSignature);
+
+  if (
+    incomingSignature.length !== expectedSignatureBuffer.length ||
+    !crypto.timingSafeEqual(incomingSignature, expectedSignatureBuffer)
+  ) {
+    return {
+      valid: false,
+      reason: "bad_signature",
+      state,
+    };
+  }
+
+  if (Date.now() - issuedAt > APPLE_STATE_TTL_MS) {
+    return {
+      valid: false,
+      reason: "expired_cookie",
+      state,
+    };
+  }
+
+  return {
+    valid: true,
+    reason: null,
+    state,
+  };
 }
 
 function getAppleDebugContext(payload) {
@@ -193,8 +320,18 @@ function createAuthRouter() {
     }
 
     const state = createOAuthState();
-    req.session.appleOAuthState = state;
     res.cookieSession();
+    setAppleStateCookie(req, res, state);
+    console.log("[FloMind] apple state generated", {
+      stateFingerprint: stateFingerprint(state),
+      cookie: {
+        httpOnly: true,
+        secure: getAppleStateCookieOptions(req).secure,
+        sameSite: getAppleStateCookieOptions(req).sameSite,
+        path: getAppleStateCookieOptions(req).path,
+        maxAgeMs: APPLE_STATE_TTL_MS,
+      },
+    });
 
     return res.redirect(buildAppleAuthUrl(state));
   });
@@ -205,29 +342,45 @@ function createAuthRouter() {
     const appleDebugContext = getAppleDebugContext(payload);
 
     console.log("[FloMind] apple callback received", appleDebugContext);
+    console.log("[FloMind] apple state received", {
+      hasState: Boolean(state),
+      stateFingerprint: stateFingerprint(state),
+    });
 
     if (error) {
       console.warn("[FloMind] Apple callback returned error:", error);
-      delete req.session.appleOAuthState;
       res.cookieSession();
+      clearAppleStateCookie(req, res);
       return redirectToLoginWithAuthError(res, "apple");
     }
 
     if (!code || typeof code !== "string") {
       console.warn("[FloMind] Apple callback missing code", appleDebugContext);
-      delete req.session.appleOAuthState;
       res.cookieSession();
+      clearAppleStateCookie(req, res);
       return redirectToLoginWithAuthError(res, "apple");
     }
 
     console.log("[FloMind] apple code present");
 
-    if (!state || state !== req.session.appleOAuthState) {
-      console.warn("[FloMind] Apple callback invalid state", appleDebugContext);
-      delete req.session.appleOAuthState;
+    const storedAppleState = readAppleStateCookie(req);
+
+    if (!state || !storedAppleState.valid || state !== storedAppleState.state) {
+      console.warn("[FloMind] Apple callback invalid state", {
+        context: appleDebugContext,
+        receivedStateFingerprint: stateFingerprint(state),
+        storedStateFingerprint: stateFingerprint(storedAppleState.state),
+        stateCookieValid: storedAppleState.valid,
+        stateCookieFailureReason: storedAppleState.reason,
+      });
       res.cookieSession();
+      clearAppleStateCookie(req, res);
       return redirectToLoginWithAuthError(res, "apple");
     }
+
+    console.log("[FloMind] apple state validation success", {
+      stateFingerprint: stateFingerprint(state),
+    });
 
     try {
       const appleProfile = await authenticateWithApple(code, appleUserPayload);
@@ -246,9 +399,9 @@ function createAuthRouter() {
 
       const user = findOrCreateUser(userInput);
 
-      delete req.session.appleOAuthState;
       req.session.user = buildSessionUser(user);
       res.cookieSession();
+      clearAppleStateCookie(req, res);
       console.log("[FloMind] apple user created/session started", {
         provider: req.session.user.provider,
         userId: req.session.user.id,
@@ -266,8 +419,8 @@ function createAuthRouter() {
         console.error("[FloMind] Apple token endpoint response body:", authError.appleTokenResponseBody);
       }
 
-      delete req.session.appleOAuthState;
       res.cookieSession();
+      clearAppleStateCookie(req, res);
       return redirectToLoginWithAuthError(res, "apple");
     }
   }
