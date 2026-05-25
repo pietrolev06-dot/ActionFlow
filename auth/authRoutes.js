@@ -26,6 +26,19 @@ function redirectToLoginWithAuthError(res, provider) {
   return res.redirect(`/login?authError=${encodeURIComponent(provider)}`);
 }
 
+function getAppleDebugContext(payload) {
+  const appleConfig = getAppleAuthConfig();
+
+  return {
+    hasCode: Boolean(payload && payload.code),
+    hasIdToken: Boolean(payload && payload.id_token),
+    clientId: appleConfig.clientId || null,
+    callbackUrl: appleConfig.callbackUrl || null,
+    keyId: appleConfig.keyId || null,
+    teamId: appleConfig.teamId || null,
+  };
+}
+
 function createAuthRouter() {
   console.log("[DEBUG] createAuthRouter() called");
   const router = express.Router();
@@ -187,23 +200,30 @@ function createAuthRouter() {
   });
 
   async function handleAppleCallback(req, res) {
-    console.log("[DEBUG] /auth/apple/callback hit");
     const payload = req.method === "POST" ? (req.body || {}) : (req.query || {});
     const { code, state, error, user: appleUserPayload } = payload;
+    const appleDebugContext = getAppleDebugContext(payload);
+
+    console.log("[FloMind] apple callback received", appleDebugContext);
 
     if (error) {
+      console.warn("[FloMind] Apple callback returned error:", error);
       delete req.session.appleOAuthState;
       res.cookieSession();
       return redirectToLoginWithAuthError(res, "apple");
     }
 
     if (!code || typeof code !== "string") {
+      console.warn("[FloMind] Apple callback missing code", appleDebugContext);
       delete req.session.appleOAuthState;
       res.cookieSession();
       return redirectToLoginWithAuthError(res, "apple");
     }
 
+    console.log("[FloMind] apple code present");
+
     if (!state || state !== req.session.appleOAuthState) {
+      console.warn("[FloMind] Apple callback invalid state", appleDebugContext);
       delete req.session.appleOAuthState;
       res.cookieSession();
       return redirectToLoginWithAuthError(res, "apple");
@@ -229,10 +249,23 @@ function createAuthRouter() {
       delete req.session.appleOAuthState;
       req.session.user = buildSessionUser(user);
       res.cookieSession();
+      console.log("[FloMind] apple user created/session started", {
+        provider: req.session.user.provider,
+        userId: req.session.user.id,
+      });
 
       return res.redirect("/");
     } catch (authError) {
-      console.warn("[FloMind] Apple authentication failed:", authError.message);
+      console.error("[FloMind] Apple authentication failed");
+      console.error("[FloMind] Apple auth error message:", authError.message);
+      console.error("[FloMind] Apple auth error stack:", authError.stack);
+      console.error("[FloMind] Apple auth context:", appleDebugContext);
+
+      if (authError.appleTokenResponseBody) {
+        console.error("[FloMind] Apple token endpoint response status:", authError.appleTokenResponseStatus || null);
+        console.error("[FloMind] Apple token endpoint response body:", authError.appleTokenResponseBody);
+      }
+
       delete req.session.appleOAuthState;
       res.cookieSession();
       return redirectToLoginWithAuthError(res, "apple");

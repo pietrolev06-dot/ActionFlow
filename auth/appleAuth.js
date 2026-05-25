@@ -72,8 +72,38 @@ function generateAppleClientSecret() {
   return `${signingInput}.${signature.toString("base64url")}`;
 }
 
+function sanitizeAppleTokenResponseBody(data) {
+  if (typeof data === "string") {
+    return data
+      .replace(/(access_token|refresh_token|id_token|client_secret)=([^&\s]+)/gi, "$1=[redacted]")
+      .slice(0, 2000);
+  }
+
+  if (!data || typeof data !== "object") {
+    return data || null;
+  }
+
+  const sanitized = { ...data };
+  [
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "client_secret",
+  ].forEach((tokenKey) => {
+    if (Object.prototype.hasOwnProperty.call(sanitized, tokenKey)) {
+      sanitized[tokenKey] = "[redacted]";
+    }
+  });
+
+  return sanitized;
+}
+
 async function exchangeAppleCodeForTokens(code) {
   const { clientId, callbackUrl } = getAppleAuthConfig();
+  const clientSecret = generateAppleClientSecret();
+  console.log("[FloMind] apple client secret generated");
+  console.log("[FloMind] apple token exchange started");
+
   const response = await fetch(APPLE_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -81,22 +111,41 @@ async function exchangeAppleCodeForTokens(code) {
     },
     body: new URLSearchParams({
       client_id: clientId,
-      client_secret: generateAppleClientSecret(),
+      client_secret: clientSecret,
       code,
       grant_type: "authorization_code",
       redirect_uri: callbackUrl,
     }),
   });
-  const data = await response.json().catch(() => ({}));
+  const responseBody = await response.text();
+  let data = {};
+
+  if (responseBody) {
+    try {
+      data = JSON.parse(responseBody);
+    } catch (error) {
+      data = responseBody;
+    }
+  }
 
   if (!response.ok) {
-    throw new Error(data.error_description || data.error || "Apple token exchange failed.");
+    const errorDescription = data && typeof data === "object"
+      ? data.error_description || data.error
+      : null;
+    const error = new Error(errorDescription || "Apple token exchange failed.");
+    error.appleTokenResponseBody = sanitizeAppleTokenResponseBody(data);
+    error.appleTokenResponseStatus = response.status;
+    throw error;
   }
 
-  if (!data.id_token) {
-    throw new Error("Apple token response missing id_token.");
+  if (!data || typeof data !== "object" || !data.id_token) {
+    const error = new Error("Apple token response missing id_token.");
+    error.appleTokenResponseBody = sanitizeAppleTokenResponseBody(data);
+    error.appleTokenResponseStatus = response.status;
+    throw error;
   }
 
+  console.log("[FloMind] apple token exchange success");
   return data;
 }
 
@@ -223,6 +272,7 @@ function parseAppleUser(userPayload) {
 async function authenticateWithApple(code, appleUserPayload) {
   const tokenData = await exchangeAppleCodeForTokens(code);
   const idTokenPayload = await verifyAppleIdToken(tokenData.id_token);
+  console.log("[FloMind] apple id_token verified");
   const appleUser = parseAppleUser(appleUserPayload);
 
   return {
