@@ -1,5 +1,8 @@
 const crypto = require("crypto");
-const { AUTH_PROVIDERS } = require("./authHelpers");
+const {
+  AUTH_PROVIDERS,
+  getAppleDisplayNameFallback,
+} = require("./authHelpers");
 
 const APPLE_AUTH_BASE_URL = "https://appleid.apple.com/auth/authorize";
 const APPLE_TOKEN_URL = "https://appleid.apple.com/auth/token";
@@ -261,7 +264,9 @@ function parseAppleUser(userPayload) {
   const lastName = parsed.name && typeof parsed.name.lastName === "string"
     ? parsed.name.lastName.trim()
     : "";
-  const displayName = [firstName, lastName].filter(Boolean).join(" ");
+  const structuredName = [firstName, lastName].filter(Boolean).join(" ");
+  const stringName = typeof parsed.name === "string" ? parsed.name.trim() : "";
+  const displayName = structuredName || stringName;
 
   return {
     email: typeof parsed.email === "string" && parsed.email.trim() ? parsed.email.trim() : null,
@@ -279,7 +284,7 @@ async function authenticateWithApple(code, appleUserPayload) {
     provider: AUTH_PROVIDERS.APPLE,
     providerUserId: idTokenPayload.sub,
     email: appleUser.email || idTokenPayload.email || null,
-    displayName: appleUser.displayName || null,
+    displayName: appleUser.displayName || getAppleDisplayNameFallback(appleUser.email || idTokenPayload.email || null),
   };
 }
 

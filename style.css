@@ -4830,3 +4830,409 @@ body[data-theme="dark"] .dashboard-task-list .btn-elimina-task:hover {
     font-size: 1.95rem;
   }
 }
+
+/* Mobile responsiveness hardening */
+html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  padding-top: max(var(--space-5), env(safe-area-inset-top));
+  padding-right: max(var(--space-3), env(safe-area-inset-right));
+  padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+  padding-left: max(var(--space-3), env(safe-area-inset-left));
+}
+
+img,
+svg,
+canvas,
+video,
+iframe {
+  max-width: 100%;
+}
+
+.container,
+.composer-card,
+.sezione,
+.home-results-panel,
+.home-results-card,
+.modal-shell,
+.settings-modal-section,
+.habits-form-card,
+.habits-list-card,
+.habits-card,
+.piano-blocco,
+.piano-task-item {
+  max-width: 100%;
+}
+
+.home-topbar,
+.home-brand-row,
+.home-topbar-actions,
+.home-main,
+.home-primary-actions,
+.voice-input-wrap,
+.account-user-copy,
+.settings-profile-copy,
+.habits-card-content,
+.habits-card-title-wrap,
+.piano-blocco,
+.piano-task-item,
+.azione-contenuto {
+  min-width: 0;
+}
+
+.home-title-greeting,
+.account-user-name,
+.account-user-email,
+.settings-profile-copy,
+.habits-card-title,
+.habits-card-meta,
+.piano-task-testo,
+.azione-testo,
+.page-title,
+.page-subtitle {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.home-title-greeting,
+.account-user-name,
+.account-user-email,
+.settings-profile-copy {
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .daily-plan-page-shell,
+  .habits-page-shell,
+  .dashboard-page-shell,
+  .container-dashboard,
+  .container {
+    width: 100%;
+  }
+
+  .daily-plan-page-shell .piano-giornaliero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-plan-page-shell .piano-blocco {
+    width: 100%;
+  }
+}
+
+@media (max-width: 700px) {
+  body {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .container {
+    width: 100%;
+    padding: 18px 14px;
+    border-radius: 16px;
+  }
+
+  .home-shell,
+  .habits-page-shell,
+  .daily-plan-page-shell,
+  .dashboard-page-shell,
+  .focus-page-shell {
+    width: 100%;
+    padding: 16px 12px 20px;
+  }
+
+  .home-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .home-brand-row {
+    width: 100%;
+  }
+
+  .home-title-greeting {
+    display: block;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.38;
+  }
+
+  .home-topbar-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .home-topbar-link {
+    flex: 1 1 104px;
+    min-width: 0;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 0.84rem;
+  }
+
+  .home-topbar-link .ui-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .account-menu-shell {
+    margin-left: auto;
+  }
+
+  .account-menu-button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+
+  .account-menu-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  .account-menu-panel {
+    right: 0;
+    width: min(290px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  }
+
+  .composer-card,
+  .home-composer-card,
+  .sezione {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 156px;
+    padding: 16px 58px 16px 16px;
+    border-radius: 18px;
+    font-size: 0.96rem;
+  }
+
+  .voice-button {
+    top: 12px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+
+  .home-primary-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(82px, 96px);
+    gap: 8px;
+  }
+
+  .home-organize-button,
+  .home-focus-shortcut,
+  .home-secondary-action,
+  #bottone-analizza.home-analyze-button {
+    min-height: 48px;
+    height: auto;
+    border-radius: 14px;
+    font-size: 0.9rem;
+  }
+
+  .home-focus-shortcut {
+    width: 100%;
+  }
+
+  .home-nav {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .home-nav-link,
+  .page-back-link {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .page-header,
+  .daily-plan-page-header,
+  .habits-page-header {
+    gap: 12px;
+  }
+
+  .daily-plan-page-actions,
+  .habits-page-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .daily-plan-page-actions .page-back-link,
+  .habits-page-actions .page-back-link,
+  .habit-new-button {
+    width: 100%;
+  }
+
+  .piano-giornaliero-grid,
+  .daily-plan-page-shell .piano-giornaliero-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .piano-blocco,
+  .daily-plan-page-shell .piano-blocco {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .piano-task-item,
+  .daily-plan-page-shell .piano-task-item,
+  .daily-plan-page-shell .piano-blocco li {
+    min-height: 72px;
+    padding: 16px 14px;
+  }
+
+  .piano-task-testo,
+  .daily-plan-page-shell .piano-task-testo {
+    font-size: 0.98rem;
+  }
+
+  .habits-form-head {
+    padding: 18px 52px 0 16px;
+  }
+
+  .habit-form {
+    padding: 18px 16px 20px;
+    gap: 16px;
+  }
+
+  .habit-title-input-field input {
+    min-height: 52px;
+    font-size: clamp(1.45rem, 8vw, 1.9rem);
+  }
+
+  .habit-advanced {
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .habit-advanced-summary {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .habit-advanced-summary > div {
+    min-width: 0;
+  }
+
+  .habit-advanced-summary-indicator {
+    min-width: 56px;
+    padding: 0 9px;
+    font-size: 0.68rem;
+  }
+
+  .habit-advanced-body {
+    padding: 14px 4px 0;
+  }
+
+  .habit-weekdays label {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: flex-start;
+    border-radius: 14px;
+  }
+
+  .habits-card {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px 14px;
+  }
+
+  .habits-card-content {
+    width: 100%;
+  }
+
+  .habits-card-actions {
+    width: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .habits-card-actions .btn-modifica,
+  .habits-action-button {
+    flex: 1 1 120px;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .modal-overlay {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .edit-input-testo,
+  .edit-input-data,
+  #bottone-esporta-eventi,
+  .settings-save-button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 430px) {
+  .container,
+  .home-shell,
+  .habits-page-shell,
+  .daily-plan-page-shell,
+  .dashboard-page-shell,
+  .focus-page-shell {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .home-primary-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .home-focus-shortcut {
+    width: 100%;
+  }
+
+  .home-topbar-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px;
+  }
+
+  .home-topbar-link {
+    width: 100%;
+    flex: none;
+  }
+
+  .home-topbar-link span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .account-menu-shell {
+    margin-left: 0;
+  }
+
+  .habits-card-actions .btn-modifica,
+  .habits-action-button {
+    flex-basis: 100%;
+  }
+}
