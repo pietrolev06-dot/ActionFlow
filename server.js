@@ -93,6 +93,10 @@ app.use("/api/billing", (req, res, next) => {
 });
 app.use("/api/billing", createBillingRouter());
 app.use("/calendar", createCalendarRouter());
+app.get("/appConfig.js", (req, res) => {
+  res.type("application/javascript");
+  res.send(appConfig.toClientScript());
+});
 app.use(express.static(PROJECT_ROOT));
 
 app.get("/__health", (req, res) => {

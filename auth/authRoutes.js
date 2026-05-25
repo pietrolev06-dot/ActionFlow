@@ -12,72 +12,18 @@ const {
   isGoogleAuthConfigured,
 } = require("./googleAuth");
 const {
+  authenticateWithApple,
+  buildAppleAuthUrl,
+  getAppleAuthConfig,
+  isAppleAuthConfigured,
+} = require("./appleAuth");
+const {
   findOrCreateUser,
   updateUserSettings,
 } = require("../models/userStore");
 
-const APPLE_AUTH_BASE_URL = "https://appleid.apple.com/auth/authorize";
-
-function getAppleAuthConfig() {
-  return {
-    clientId: (process.env.APPLE_CLIENT_ID || "").trim(),
-    redirectUri: (process.env.APPLE_REDIRECT_URI || "").trim(),
-  };
-}
-
-function isAppleAuthConfigured() {
-  const { clientId, redirectUri } = getAppleAuthConfig();
-  return Boolean(clientId && redirectUri);
-}
-
-function buildAppleAuthUrl(state) {
-  const { clientId, redirectUri } = getAppleAuthConfig();
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    response_mode: "form_post",
-    scope: "name email",
-    state,
-  });
-
-  return `${APPLE_AUTH_BASE_URL}?${params.toString()}`;
-}
-
-function maskSensitiveValue(value) {
-  if (typeof value !== "string" || !value) {
-    return null;
-  }
-
-  if (value.length <= 12) {
-    return `${value.slice(0, 3)}***${value.slice(-3)}`;
-  }
-
-  return `${value.slice(0, 6)}***${value.slice(-6)}`;
-}
-
-function parseAppleIdToken(idToken) {
-  if (typeof idToken !== "string") {
-    throw new Error("Missing Apple id_token.");
-  }
-
-  const tokenParts = idToken.split(".");
-
-  if (tokenParts.length < 2) {
-    throw new Error("Invalid Apple id_token.");
-  }
-
-  const payload = JSON.parse(Buffer.from(tokenParts[1], "base64url").toString("utf8"));
-
-  if (!payload.sub) {
-    throw new Error("Apple id_token missing sub.");
-  }
-
-  return {
-    provider: AUTH_PROVIDERS.APPLE,
-    providerUserId: payload.sub,
-    email: payload.email || null,
-  };
+function redirectToLoginWithAuthError(res, provider) {
+  return res.redirect(`/login?authError=${encodeURIComponent(provider)}`);
 }
 
 function createAuthRouter() {
@@ -225,7 +171,10 @@ function createAuthRouter() {
         error: "Configurazione Apple OAuth incompleta.",
         checks: {
           hasAppleClientId: Boolean(appleConfig.clientId),
-          hasAppleRedirectUri: Boolean(appleConfig.redirectUri),
+          hasAppleTeamId: Boolean(appleConfig.teamId),
+          hasAppleKeyId: Boolean(appleConfig.keyId),
+          hasApplePrivateKey: Boolean(appleConfig.privateKey),
+          hasAppleCallbackUrl: Boolean(appleConfig.callbackUrl),
         },
       });
     }
@@ -237,20 +186,45 @@ function createAuthRouter() {
     return res.redirect(buildAppleAuthUrl(state));
   });
 
-  router.post("/apple/callback", (req, res) => {
+  async function handleAppleCallback(req, res) {
     console.log("[DEBUG] /auth/apple/callback hit");
-    const { code, id_token: idToken } = req.body || {};
+    const payload = req.method === "POST" ? (req.body || {}) : (req.query || {});
+    const { code, state, error, user: appleUserPayload } = payload;
 
-    console.log("[DEBUG] Apple callback payload:", {
-      hasCode: Boolean(code),
-      hasIdToken: Boolean(idToken),
-      codePreview: maskSensitiveValue(code),
-      idTokenPreview: maskSensitiveValue(idToken),
-    });
+    if (error) {
+      delete req.session.appleOAuthState;
+      res.cookieSession();
+      return redirectToLoginWithAuthError(res, "apple");
+    }
+
+    if (!code || typeof code !== "string") {
+      delete req.session.appleOAuthState;
+      res.cookieSession();
+      return redirectToLoginWithAuthError(res, "apple");
+    }
+
+    if (!state || state !== req.session.appleOAuthState) {
+      delete req.session.appleOAuthState;
+      res.cookieSession();
+      return redirectToLoginWithAuthError(res, "apple");
+    }
 
     try {
-      const appleProfile = parseAppleIdToken(idToken);
-      const user = findOrCreateUser(appleProfile);
+      const appleProfile = await authenticateWithApple(code, appleUserPayload);
+      const userInput = {
+        provider: appleProfile.provider,
+        providerUserId: appleProfile.providerUserId,
+      };
+
+      if (appleProfile.email) {
+        userInput.email = appleProfile.email;
+      }
+
+      if (appleProfile.displayName) {
+        userInput.displayName = appleProfile.displayName;
+      }
+
+      const user = findOrCreateUser(userInput);
 
       delete req.session.appleOAuthState;
       req.session.user = buildSessionUser(user);
@@ -258,12 +232,15 @@ function createAuthRouter() {
 
       return res.redirect("/");
     } catch (authError) {
-      return res.status(400).json({
-        error: "Apple authentication failed.",
-        detail: authError.message,
-      });
+      console.warn("[FloMind] Apple authentication failed:", authError.message);
+      delete req.session.appleOAuthState;
+      res.cookieSession();
+      return redirectToLoginWithAuthError(res, "apple");
     }
-  });
+  }
+
+  router.get("/apple/callback", handleAppleCallback);
+  router.post("/apple/callback", handleAppleCallback);
 
   router.all("/logout", (req, res) => {
     req.session.destroy();

@@ -5700,7 +5700,7 @@ function renderAccountMenu(user) {
   if (actions) {
     actions.innerHTML =
       '<button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>' +
-      '<button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Continua con Apple</button>' +
+      '<button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Accedi con Apple</button>' +
       '<div id="account-provider-placeholders" class="auth-placeholder-group" aria-label="Provider futuri">' +
       '<button type="button" class="auth-btn auth-btn-secondary" disabled aria-disabled="true">Email presto</button>' +
       "</div>";
