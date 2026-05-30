@@ -1,0 +1,155 @@
+// Migrazione chiavi localStorage
+(function() {
+  var m = [
+    ["drop2action_checklist", "actionflow_checklist"],
+    ["drop2action_checklist_done", "actionflow_checklist_done"]
+  ];
+  for (var i = 0; i < m.length; i++) {
+    if (!localStorage.getItem(m[i][1]) && localStorage.getItem(m[i][0])) {
+      localStorage.setItem(m[i][1], localStorage.getItem(m[i][0]));
+    }
+  }
+})();
+
+function normalizeText(text) {
+  return String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function dedupeChecklistItems(items) {
+  var source = Array.isArray(items) ? items : [];
+  var deduped = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var task = normalizzaAzioneChecklist(source[i]);
+    var merged = false;
+    if (!task) continue;
+
+    for (var j = 0; j < deduped.length; j++) {
+      if (normalizeText(deduped[j].testo) === normalizeText(task.testo)) {
+        if (task.priorita === "alta" || (task.priorita === "media" && deduped[j].priorita === "bassa")) {
+          deduped[j].priorita = task.priorita;
+        }
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) deduped.push(task);
+  }
+
+  return deduped;
+}
+
+function leggiChecklist() {
+  try {
+    var dati = window.ActionFlowAuth.readOwnedArray("actionflow_checklist");
+    if (!Array.isArray(dati)) return [];
+    var cleaned = dedupeChecklistItems(dati);
+    if (JSON.stringify(dati) !== JSON.stringify(cleaned)) {
+      window.ActionFlowAuth.writeOwnedArray("actionflow_checklist", cleaned);
+    }
+    return cleaned;
+  } catch (e) {
+    return [];
+  }
+}
+
+function leggiCompletate() {
+  return window.ActionFlowAuth.readScopedObject("actionflow_checklist_done");
+}
+
+function salvaCompletate(completate) {
+  window.ActionFlowAuth.writeScopedObject("actionflow_checklist_done", completate);
+}
+
+function normalizzaAzioneChecklist(item) {
+  if (typeof item === "string") {
+    return { testo: item, priorita: "media" };
+  }
+
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  if (!item.testo) {
+    return null;
+  }
+
+  var priorita = item.priorita;
+  if (priorita !== "alta" && priorita !== "media" && priorita !== "bassa") {
+    priorita = "media";
+  }
+
+  return {
+    testo: item.testo,
+    priorita: priorita
+  };
+}
+
+function renderChecklist() {
+  var lista = document.getElementById("lista-checklist");
+  var vuota = document.getElementById("checklist-vuota");
+  var azioni = leggiChecklist();
+  var completate = leggiCompletate();
+
+  lista.innerHTML = "";
+
+  if (azioni.length === 0) {
+    vuota.classList.remove("nascosto");
+    return;
+  }
+
+  vuota.classList.add("nascosto");
+
+  for (var i = 0; i < azioni.length; i++) {
+    var task = normalizzaAzioneChecklist(azioni[i]);
+    if (!task) continue;
+
+    var chiave = "task_" + task.testo;
+
+    var li = document.createElement("li");
+    li.className = "checklist-item priorita-" + task.priorita;
+
+    var checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = "checklist-task-" + i;
+    checkbox.checked = completate[chiave] === true;
+
+    checkbox.addEventListener("change", function(key, el) {
+      return function() {
+        completate[key] = el.checked;
+        salvaCompletate(completate);
+      };
+    }(chiave, checkbox));
+
+    var label = document.createElement("label");
+    label.htmlFor = checkbox.id;
+    label.textContent = task.testo;
+
+    var badge = document.createElement("span");
+    badge.className = "badge-priorita priorita-" + task.priorita;
+    badge.textContent = task.priorita;
+
+    li.appendChild(checkbox);
+    li.appendChild(label);
+    li.appendChild(badge);
+    lista.appendChild(li);
+  }
+}
+
+function svuotaChecklist() {
+  window.ActionFlowAuth.clearOwnedArray("actionflow_checklist");
+  window.ActionFlowAuth.clearScopedObject("actionflow_checklist_done");
+  renderChecklist();
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  renderChecklist();
+
+  var bottoneSvuota = document.getElementById("bottone-svuota-checklist");
+  bottoneSvuota.addEventListener("click", svuotaChecklist);
+});
+
+window.addEventListener("actionflow-auth-ready", function() {
+  renderChecklist();
+});

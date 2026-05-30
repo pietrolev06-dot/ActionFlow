@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login | FloMind</title>
+  <meta name="application-name" content="FloMind" />
+  <meta name="apple-mobile-web-app-title" content="FloMind" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="login-page">
+    <section class="login-card" aria-labelledby="login-title">
+      <div class="login-logo" aria-hidden="true">FM</div>
+      <p class="login-kicker">Produttività personale</p>
+      <h1 id="login-title" class="login-title">Flo<span class="brand-accent">Mind</span></h1>
+      <p class="login-subtitle">Accedi in pochi secondi e inizia a organizzare le tue giornate con un flusso semplice e pulito.</p>
+
+      <div class="login-actions">
+        <a class="login-button login-button-google" data-beta-external-service href="/auth/google">Continua con Google</a>
+        <a class="login-button login-button-apple" data-beta-external-service href="/auth/apple">Accedi con Apple</a>
+        <button
+          type="button"
+          class="login-button login-button-guest"
+          onclick="document.getElementById('guest-name-panel').classList.remove('nascosto'); document.getElementById('guest-name-input').focus();"
+        >
+          Continua come ospite
+        </button>
+      </div>
+
+      <form
+        id="guest-name-panel"
+        class="guest-panel nascosto"
+        onsubmit="event.preventDefault(); var nameInput = document.getElementById('guest-name-input'); var guestName = (nameInput.value || '').trim(); if (!guestName) { nameInput.focus(); return; } localStorage.setItem('actionflow_guest_user', JSON.stringify({ id: 'guest-local', name: guestName })); window.location.href = '/';"
+      >
+        <label for="guest-name-input" class="guest-label">Il tuo nome</label>
+        <input id="guest-name-input" class="guest-input" type="text" maxlength="60" autocomplete="name" placeholder="Es. Pietro" />
+        <button type="submit" class="login-button login-button-submit">Entra come ospite</button>
+      </form>
+    </section>
+  </main>
+  <script src="appConfig.js"></script>
+  <script src="authClient.js"></script>
+  <script>
+    (function() {
+      var betaNoticeTimer = null;
+
+      function showBetaNotice() {
+        var message = window.ActionFlowConfig && window.ActionFlowConfig.BETA_DISABLED_MESSAGE
+          ? window.ActionFlowConfig.BETA_DISABLED_MESSAGE
+          : "L'applicazione è ancora in beta, alcune funzioni sono temporaneamente disabilitate.";
+        showLoginNotice(message);
+      }
+
+      function showLoginNotice(message) {
+        var notice = document.getElementById("beta-disabled-notice");
+
+        if (!notice) {
+          notice = document.createElement("div");
+          notice.id = "beta-disabled-notice";
+          notice.className = "beta-disabled-notice";
+          notice.setAttribute("role", "status");
+          notice.setAttribute("aria-live", "polite");
+          document.body.appendChild(notice);
+        }
+
+        notice.textContent = message;
+        notice.classList.add("is-visible");
+        window.clearTimeout(betaNoticeTimer);
+        betaNoticeTimer = window.setTimeout(function() {
+          notice.classList.remove("is-visible");
+        }, 2500);
+      }
+
+      document.addEventListener("click", function(event) {
+        var target = event.target;
+        if (!(target instanceof Element)) return;
+        var link = target.closest("[data-beta-external-service]");
+        if (!link || !(window.ActionFlowConfig && window.ActionFlowConfig.BETA_DISABLE_EXTERNAL_SERVICES === true)) return;
+
+        event.preventDefault();
+        showBetaNotice();
+      });
+
+      if (new URLSearchParams(window.location.search).get("betaExternalServicesDisabled") === "1") {
+        showBetaNotice();
+        window.history.replaceState({}, "", "/login");
+      }
+
+      if (new URLSearchParams(window.location.search).get("authError") === "apple") {
+        showLoginNotice("Accesso Apple non riuscito. Riprova.");
+        window.history.replaceState({}, "", "/login");
+      }
+
+      function hasGuestUser() {
+        try {
+          var raw = localStorage.getItem("actionflow_guest_user");
+          var parsed = raw ? JSON.parse(raw) : null;
+          return !!(parsed && typeof parsed === "object" && parsed.name);
+        } catch (e) {
+          return false;
+        }
+      }
+
+      window.addEventListener("actionflow-auth-ready", function() {
+        if (window.ActionFlowAuth && typeof window.ActionFlowAuth.getCurrentUser === "function" && window.ActionFlowAuth.getCurrentUser()) {
+          window.location.replace("/");
+          return;
+        }
+
+        if (hasGuestUser()) {
+          window.location.replace("/");
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
