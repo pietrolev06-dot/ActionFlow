@@ -61,12 +61,40 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
 const PROJECT_ROOT = __dirname;
+const ALLOWED_CORS_ORIGINS = new Set([
+  "capacitor://localhost",
+  "ionic://localhost",
+  "http://localhost",
+  "http://localhost:3000",
+  "http://localhost:5173",
+]);
 
 console.log("[DEBUG] Startup file:", __filename);
 
 app.use((req, res, next) => {
   console.log("[REQ]", req.method, req.originalUrl);
   next();
+});
+
+app.use((req, res, next) => {
+  const origin = req.get("origin");
+
+  if (origin && ALLOWED_CORS_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      req.get("access-control-request-headers") || "Content-Type,Authorization"
+    );
+    res.setHeader("Vary", "Origin");
+  }
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  return next();
 });
 
 // --- Middleware ---

@@ -35,6 +35,29 @@ var DAILY_PLAN_DEBUG = true;
 var ANALYSIS_PREVIEW_MAX_ITEMS = 6;
 var pendingAnalysisResult = null;
 
+function buildBackendUrl(path) {
+  return window.ActionFlowApi && typeof window.ActionFlowApi.buildApiUrl === "function"
+    ? window.ActionFlowApi.buildApiUrl(path)
+    : path;
+}
+
+function fetchBackend(path, options) {
+  if (window.ActionFlowApi && typeof window.ActionFlowApi.apiFetch === "function") {
+    return window.ActionFlowApi.apiFetch(path, options);
+  }
+
+  return fetch(path, options);
+}
+
+function navigateToBackend(path) {
+  if (window.ActionFlowApi && typeof window.ActionFlowApi.navigateToBackend === "function") {
+    window.ActionFlowApi.navigateToBackend(path);
+    return;
+  }
+
+  window.location.href = path;
+}
+
 function normalizeText(text) {
   return String(text || "")
     .toLowerCase()
@@ -4044,11 +4067,11 @@ async function analizzaTesto() {
 
   console.log("[FloMind] === INIZIO CHIAMATA ===");
   console.log("[FloMind] Metodo: POST");
-  console.log("[FloMind] URL: /api/analyze");
+  console.log("[FloMind] URL:", buildBackendUrl("/api/analyze"));
   console.log("[FloMind] Body inviato:", JSON.stringify(payload));
 
   try {
-    var response = await fetch("/api/analyze", {
+    var response = await fetchBackend("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -4338,9 +4361,8 @@ async function syncTasksToGoogleCalendarIfNeeded(tasks) {
 
     try {
       console.log("[Calendar] Calling /calendar/events", payload);
-      var response = await fetch("/calendar/events", {
+      var response = await fetchBackend("/calendar/events", {
         method: "POST",
-        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json"
         },
@@ -4383,9 +4405,8 @@ async function aggiungiTaskAGoogleCalendar(taskDisplay) {
   }
 
   try {
-    var response = await fetch("/calendar/events", {
+    var response = await fetchBackend("/calendar/events", {
       method: "POST",
-      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       },
@@ -4766,7 +4787,7 @@ function avviaLoginGoogle() {
     return;
   }
 
-  window.location.href = "/auth/google";
+  navigateToBackend("/auth/google");
 }
 
 function avviaLoginApple() {
@@ -4775,7 +4796,7 @@ function avviaLoginApple() {
     return;
   }
 
-  window.location.href = "/auth/apple";
+  navigateToBackend("/auth/apple");
 }
 
 var betaDisabledNoticeTimer = null;
@@ -5160,9 +5181,8 @@ async function createStripeCheckoutSession(interval, triggerButton) {
   );
 
   try {
-    var response = await fetch("/api/billing/create-checkout-session", {
+    var response = await fetchBackend("/api/billing/create-checkout-session", {
       method: "POST",
-      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       },
@@ -5198,9 +5218,8 @@ async function openStripeCustomerPortal(triggerButton) {
   setButtonBusy(triggerButton, true, "Apertura...", triggerButton ? triggerButton.textContent : "");
 
   try {
-    var response = await fetch("/api/billing/create-portal-session", {
-      method: "POST",
-      credentials: "same-origin"
+    var response = await fetchBackend("/api/billing/create-portal-session", {
+      method: "POST"
     });
     var payload = await response.json().catch(function() { return {}; });
 
@@ -5491,9 +5510,8 @@ async function eseguiLogoutAuth() {
   }
 
   try {
-    await fetch("/auth/logout", {
-      method: "POST",
-      credentials: "same-origin"
+    await fetchBackend("/auth/logout", {
+      method: "POST"
     });
   } catch (e) {}
 
@@ -5612,9 +5630,8 @@ async function saveSettingsModal() {
   }
 
   try {
-    var response = await fetch("/auth/settings", {
+    var response = await fetchBackend("/auth/settings", {
       method: "POST",
-      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       },

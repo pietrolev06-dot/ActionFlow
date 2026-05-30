@@ -1,13 +1,16 @@
 (function(root) {
   var betaDisabledMessage = "L'applicazione è ancora in beta, alcune funzioni sono temporaneamente disabilitate.";
 
+  function hasProcessEnv() {
+    return (
+      typeof process !== "undefined" &&
+      process &&
+      process.env
+    );
+  }
+
   function readEnvValue(name) {
-    if (
-      typeof process === "undefined" ||
-      !process ||
-      !process.env ||
-      typeof process.env[name] === "undefined"
-    ) {
+    if (!hasProcessEnv() || typeof process.env[name] === "undefined") {
       return null;
     }
 
@@ -15,6 +18,10 @@
   }
 
   function isExternalServicesDisabled() {
+    if (!hasProcessEnv()) {
+      return false;
+    }
+
     var value = readEnvValue("BETA_DISABLE_EXTERNAL_SERVICES");
     return !value || value.toLowerCase() !== "false";
   }

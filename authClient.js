@@ -1,4 +1,6 @@
 (function(global) {
+  var CAPACITOR_API_BASE_URL = "https://actionflow-2zwl.onrender.com";
+  var API_BASE_URL = getApiBaseUrl();
   var OWNER_ALIAS_STORAGE_KEY = "actionflow_owner_aliases";
   var MIGRATION_ARRAY_KEYS = [
     "actionflow_archivio_azioni",
@@ -12,12 +14,64 @@
     "actionflow_checklist_done",
     "actionflow_analysis_usage"
   ];
-  var USER_STORAGE_SYNC_URL = "/api/user-storage";
+  var USER_STORAGE_SYNC_URL = buildApiUrl("/api/user-storage");
   var authState = {
     user: null,
     loaded: false
   };
   var pendingSyncTimeout = null;
+
+  function isCapacitorRuntime() {
+    var capacitor = global.Capacitor;
+
+    if (!capacitor || typeof capacitor.getPlatform !== "function") {
+      return false;
+    }
+
+    return capacitor.getPlatform() !== "web";
+  }
+
+  function getApiBaseUrl() {
+    return isCapacitorRuntime() ? CAPACITOR_API_BASE_URL : "";
+  }
+
+  function buildApiUrl(path) {
+    if (/^https?:\/\//i.test(path)) {
+      return path;
+    }
+
+    var normalizedPath = path.charAt(0) === "/" ? path : "/" + path;
+    return API_BASE_URL ? API_BASE_URL + normalizedPath : normalizedPath;
+  }
+
+  function getFetchCredentials() {
+    return isCapacitorRuntime() ? "include" : "same-origin";
+  }
+
+  function apiFetch(path, options) {
+    var requestOptions = Object.assign({}, options || {});
+
+    if (!requestOptions.credentials) {
+      requestOptions.credentials = getFetchCredentials();
+    }
+
+    return fetch(buildApiUrl(path), requestOptions);
+  }
+
+  function navigateToBackend(path) {
+    global.location.href = buildApiUrl(path);
+  }
+
+  function updateBackendLinks() {
+    var links = global.document ? global.document.querySelectorAll("[data-api-route]") : [];
+
+    for (var i = 0; i < links.length; i++) {
+      var route = links[i].getAttribute("data-api-route");
+      if (route) {
+        links[i].setAttribute("href", buildApiUrl(route));
+      }
+    }
+  }
 
   function cloneRecord(record) {
     return Object.assign({}, record);
@@ -428,9 +482,8 @@
       return Promise.resolve(null);
     }
 
-    return fetch(USER_STORAGE_SYNC_URL, {
+    return apiFetch(USER_STORAGE_SYNC_URL, {
       method: "PUT",
-      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       },
@@ -470,9 +523,7 @@
 
     var localSnapshot = buildCurrentUserStorageSnapshot();
 
-    return fetch(USER_STORAGE_SYNC_URL, {
-      credentials: "same-origin"
-    })
+    return apiFetch(USER_STORAGE_SYNC_URL)
       .then(function(response) {
         if (!response.ok) {
           return { storage: null };
@@ -506,9 +557,7 @@
   }
 
   function loadCurrentUser() {
-    return fetch("/auth/me", {
-      credentials: "same-origin"
-    })
+    return apiFetch("/auth/me")
       .then(function(response) {
         if (!response.ok) {
           return { user: null };
@@ -548,6 +597,21 @@
     writeOwnedArray: writeOwnedArray,
     writeScopedObject: writeScopedObject
   };
+
+  global.ActionFlowApi = {
+    API_BASE_URL: API_BASE_URL,
+    apiFetch: apiFetch,
+    buildApiUrl: buildApiUrl,
+    getFetchCredentials: getFetchCredentials,
+    isCapacitorRuntime: isCapacitorRuntime,
+    navigateToBackend: navigateToBackend
+  };
+
+  if (global.document && global.document.readyState === "loading") {
+    global.document.addEventListener("DOMContentLoaded", updateBackendLinks);
+  } else {
+    updateBackendLinks();
+  }
 
   loadCurrentUser();
 })(window);

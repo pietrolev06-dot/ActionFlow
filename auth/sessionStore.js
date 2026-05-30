@@ -25,16 +25,18 @@ function parseCookies(cookieHeader = "") {
   }, {});
 }
 
-function serializeCookie(name, value, maxAgeMs) {
+function serializeCookie(name, value, maxAgeMs, req) {
+  const isSecureRequest = !!(req && (req.secure || req.headers["x-forwarded-proto"] === "https"));
+  const shouldUseSecureCookie = process.env.NODE_ENV === "production" || isSecureRequest;
   const attributes = [
     `${name}=${encodeURIComponent(value)}`,
     "Path=/",
     "HttpOnly",
-    "SameSite=Lax",
+    `SameSite=${shouldUseSecureCookie ? "None" : "Lax"}`,
     `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
   ];
 
-  if (process.env.NODE_ENV === "production") {
+  if (shouldUseSecureCookie) {
     attributes.push("Secure");
   }
 
@@ -77,7 +79,7 @@ function createSessionMiddleware() {
 
       sessionId = null;
       req.session = {};
-      res.setHeader("Set-Cookie", serializeCookie(SESSION_COOKIE_NAME, "", 0));
+      res.setHeader("Set-Cookie", serializeCookie(SESSION_COOKIE_NAME, "", 0, req));
     };
 
     res.on("finish", () => {
@@ -112,7 +114,7 @@ function createSessionMiddleware() {
         const signedValue = `${sessionId}.${signSessionId(sessionId, sessionSecret)}`;
         res.setHeader(
           "Set-Cookie",
-          serializeCookie(SESSION_COOKIE_NAME, signedValue, SESSION_TTL_MS)
+          serializeCookie(SESSION_COOKIE_NAME, signedValue, SESSION_TTL_MS, req)
         );
       };
 
