@@ -1,6 +1,7 @@
 (function() {
   var THEME_STORAGE_KEY = "actionflow_theme";
   var editingHabitId = null;
+  var lastFocusedElement = null;
 
   function getStoredThemePreference() {
     try {
@@ -13,11 +14,18 @@
 
   function getResolvedTheme(theme) {
     if (theme === "light" || theme === "dark") return theme;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
 
   function applyTheme(theme) {
-    document.body.setAttribute("data-theme", getResolvedTheme(theme || "system"));
+    var resolvedTheme = getResolvedTheme(theme || "system");
+    var preference = theme === "light" || theme === "dark" || theme === "system" ? theme : "system";
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+    document.documentElement.setAttribute("data-theme-preference", preference);
+    document.documentElement.style.colorScheme = resolvedTheme;
+    document.body.setAttribute("data-theme", resolvedTheme);
+    document.body.setAttribute("data-theme-preference", preference);
+    document.body.style.colorScheme = resolvedTheme;
   }
 
   function formatHabitDuration(minutes) {
@@ -38,6 +46,32 @@
     }
 
     return "Settimanale";
+  }
+
+  function isHabitDueToday(habit) {
+    return !!(
+      window.ActionFlowHabits &&
+      typeof window.ActionFlowHabits.isHabitActiveOnDate === "function" &&
+      window.ActionFlowHabits.isHabitActiveOnDate(habit, new Date())
+    );
+  }
+
+  function getHabitStatus(habit) {
+    if (habit.completedToday) {
+      return { label: "Completata", className: "is-completed" };
+    }
+
+    if (isHabitDueToday(habit)) {
+      return { label: "Da fare oggi", className: "is-due" };
+    }
+
+    return { label: "Saltata", className: "is-skipped" };
+  }
+
+  function getHabitAccentClass(habit) {
+    if (habit.importance === "alta") return "accent-high";
+    if (habit.importance === "bassa") return "accent-low";
+    return "accent-mid";
   }
 
   function getCheckedHabitWeekdays() {
@@ -90,7 +124,8 @@
     var label = document.getElementById("habit-advanced-summary-label");
     if (!advanced || !label) return;
 
-    label.textContent = advanced.open ? "CHIUDI" : "APRI";
+    label.textContent = "";
+    label.setAttribute("aria-label", advanced.open ? "Chiudi preferenze avanzate" : "Apri preferenze avanzate");
   }
 
   function aggiornaHabitFixedFields() {
@@ -103,14 +138,47 @@
     if (startTime) startTime.required = toggle.checked;
   }
 
+  function syncHabitModalState(isOpen) {
+    document.documentElement.classList.toggle("modal-open", isOpen);
+    document.body.classList.toggle("modal-open", isOpen);
+  }
+
+  function setHabitFormMode(mode) {
+    var title = document.getElementById("habit-form-title");
+    var submit = document.getElementById("habit-submit-button");
+    var isEdit = mode === "edit";
+
+    if (title) title.textContent = isEdit ? "Modifica habit" : "Nuova habit";
+    if (submit) submit.textContent = isEdit ? "Salva modifiche" : "Salva habit";
+  }
+
   function showHabitForm() {
-    var card = document.getElementById("habit-form-card");
-    if (card) card.classList.remove("nascosto");
+    var overlay = document.getElementById("habit-form-overlay");
+    if (!overlay) return;
+
+    lastFocusedElement = document.activeElement;
+    overlay.classList.remove("nascosto");
+    overlay.setAttribute("aria-hidden", "false");
+    syncHabitModalState(true);
+
+    window.setTimeout(function() {
+      var titleInput = document.getElementById("habit-title");
+      if (titleInput) titleInput.focus();
+    }, 0);
   }
 
   function hideHabitForm() {
-    var card = document.getElementById("habit-form-card");
-    if (card) card.classList.add("nascosto");
+    var overlay = document.getElementById("habit-form-overlay");
+    if (!overlay) return;
+
+    overlay.classList.add("nascosto");
+    overlay.setAttribute("aria-hidden", "true");
+    syncHabitModalState(false);
+
+    if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+      lastFocusedElement.focus();
+    }
+    lastFocusedElement = null;
   }
 
   function resetHabitForm() {
@@ -120,6 +188,7 @@
 
     if (form) form.reset();
     if (submit) submit.textContent = "Salva habit";
+    setHabitFormMode("new");
 
     var advanced = document.getElementById("habit-advanced");
     if (advanced) advanced.open = false;
@@ -204,49 +273,41 @@
 
   function buildHabitCard(habit) {
     var card = document.createElement("article");
-    card.className = "habits-card";
+    card.className = "habits-card " + getHabitAccentClass(habit);
     if (habit.completedToday) card.classList.add("is-completed");
+    var status = getHabitStatus(habit);
+    card.classList.add(status.className);
 
     var content = document.createElement("div");
     content.className = "habits-card-content";
 
+    var topRow = document.createElement("div");
+    topRow.className = "habits-card-top-row";
+
     var titleWrap = document.createElement("div");
     titleWrap.className = "habits-card-title-wrap";
+
+    var headingRow = document.createElement("div");
+    headingRow.className = "habits-card-heading-row";
 
     var title = document.createElement("h3");
     title.className = "habits-card-title";
     title.textContent = habit.title;
-    titleWrap.appendChild(title);
+    headingRow.appendChild(title);
 
-    var meta = document.createElement("p");
-    meta.className = "habits-card-meta";
-    var metaParts = [
-      getFrequencyLabel(habit),
-      habit.estimatedDurationManual === true ? formatHabitDuration(habit.estimatedDurationMinutes) : "Durata automatica",
-      "Importanza " + (habit.importance || "media")
-    ];
-    if (habit.energyLevel) metaParts.push("Energia " + habit.energyLevel);
-    if (habit.fixedSchedule && habit.fixedStartTime) {
-      metaParts.push("Orario " + habit.fixedStartTime);
-    }
-    meta.textContent = metaParts.filter(Boolean).join(" • ");
-    titleWrap.appendChild(meta);
+    var recurrence = document.createElement("span");
+    recurrence.className = "habits-card-recurrence";
+    recurrence.textContent = getFrequencyLabel(habit);
+    headingRow.appendChild(recurrence);
 
-    var completion = document.createElement("span");
-    completion.className = "habits-card-status";
-    completion.textContent = habit.completedToday ? "Completata oggi" : "Da fare oggi";
-    titleWrap.appendChild(completion);
+    titleWrap.appendChild(headingRow);
 
-    content.appendChild(titleWrap);
-    card.appendChild(content);
-
-    var actions = document.createElement("div");
-    actions.className = "habits-card-actions";
+    topRow.appendChild(titleWrap);
 
     var completeButton = document.createElement("button");
     completeButton.type = "button";
-    completeButton.className = "btn-modifica habits-action-button habits-complete-button";
-    completeButton.textContent = habit.completedToday ? "Da fare" : "Completa";
+    completeButton.className = "habits-check-button";
+    completeButton.setAttribute("aria-label", habit.completedToday ? "Segna habit come da fare" : "Completa habit");
     completeButton.addEventListener("click", function() {
       if (habit.completedToday) {
         window.ActionFlowHabits.updateHabit(habit.id, {
@@ -258,7 +319,19 @@
       }
       renderHabits();
     });
-    actions.appendChild(completeButton);
+    topRow.appendChild(completeButton);
+
+    content.appendChild(topRow);
+
+    var completion = document.createElement("span");
+    completion.className = "habits-card-status " + status.className;
+    completion.textContent = status.label;
+    content.appendChild(completion);
+
+    card.appendChild(content);
+
+    var actions = document.createElement("div");
+    actions.className = "habits-card-actions";
 
     var editButton = document.createElement("button");
     editButton.type = "button";
@@ -283,7 +356,6 @@
   }
 
   function startEditHabit(habit) {
-    var submit = document.getElementById("habit-submit-button");
     editingHabitId = habit.id;
 
     document.getElementById("habit-title").value = habit.title || "";
@@ -296,7 +368,7 @@
     document.getElementById("habit-notes").value = habit.notes || "";
     setCheckedHabitWeekdays(habit.daysOfWeek || []);
 
-    if (submit) submit.textContent = "Salva modifiche";
+    setHabitFormMode("edit");
     aggiornaHabitFrequencyFields();
     aggiornaHabitFixedFields();
     showHabitForm();
@@ -332,6 +404,7 @@
     var newButton = document.getElementById("habit-new-button");
     var cancelButton = document.getElementById("habit-cancel-button");
     var closeButton = document.getElementById("habit-form-close-button");
+    var backdrop = document.getElementById("habit-form-backdrop");
     var frequency = document.getElementById("habit-frequency");
     var fixedToggle = document.getElementById("habit-fixed-schedule");
     var advanced = document.getElementById("habit-advanced");
@@ -357,11 +430,37 @@
       });
     }
 
+    if (backdrop) {
+      backdrop.addEventListener("click", function() {
+        resetHabitForm();
+        hideHabitForm();
+      });
+    }
+
+    document.addEventListener("keydown", function(event) {
+      var overlay = document.getElementById("habit-form-overlay");
+      if (event.key !== "Escape" || !overlay || overlay.classList.contains("nascosto")) return;
+
+      resetHabitForm();
+      hideHabitForm();
+    });
+
     if (frequency) frequency.addEventListener("change", aggiornaHabitFrequencyFields);
     if (fixedToggle) fixedToggle.addEventListener("change", aggiornaHabitFixedFields);
     if (advanced) advanced.addEventListener("toggle", aggiornaHabitAdvancedSummary);
 
     if (form) {
+      form.addEventListener("focusin", function(event) {
+        var target = event.target;
+        if (!target || !target.matches || !target.matches("input, select, textarea")) return;
+
+        window.setTimeout(function() {
+          if (typeof target.scrollIntoView === "function") {
+            target.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }
+        }, 120);
+      });
+
       form.addEventListener("submit", function(event) {
         event.preventDefault();
 
@@ -398,6 +497,7 @@
     aggiornaHabitFrequencyFields();
     aggiornaHabitFixedFields();
     aggiornaHabitAdvancedSummary();
+    hideHabitForm();
   }
 
   document.addEventListener("DOMContentLoaded", function() {

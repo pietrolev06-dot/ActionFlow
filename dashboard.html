@@ -10,46 +10,21 @@
 </head>
 <body>
 
-  <div class="container container-dashboard dashboard-page-shell">
+  <div class="dashboard-page-shell">
+    <a class="dashboard-close-link overlay-icon-close" href="index.html" aria-label="Torna alla home">×</a>
 
     <header class="page-header dashboard-page-header">
       <div class="dashboard-page-heading">
-        <p class="page-kicker">Task salvati</p>
         <h1 id="titolo-dashboard" class="page-title">Dashboard</h1>
-        <p class="page-subtitle">Una vista semplice di tutto quello che hai raccolto.</p>
-      </div>
-
-      <div class="dashboard-page-actions">
-        <a class="page-back-link" href="index.html">Torna alla home</a>
-        <button type="button" id="bottone-svuota-dashboard">
-          <span class="ui-button-content">
-            <span class="ui-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M9.25 4.5a1 1 0 0 1 .95-.68h3.6a1 1 0 0 1 .95.68l.25.75H18.5a.75.75 0 0 1 0 1.5h-.64l-.72 11.03A2.25 2.25 0 0 1 14.89 20H9.11a2.25 2.25 0 0 1-2.25-2.22L6.14 6.75H5.5a.75.75 0 0 1 0-1.5H9l.25-.75Zm-1 2.25.71 10.93a.75.75 0 0 0 .75.72h5.78a.75.75 0 0 0 .75-.72l.71-10.93h-8.7Zm2.49 2.25a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Zm3.5 0a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Z" fill="currentColor"></path>
-              </svg>
-            </span>
-            <span>Svuota tutti i task</span>
-          </span>
-        </button>
+        <p class="page-subtitle">I task salvati, pronti da controllare.</p>
       </div>
     </header>
-
-    <div id="barra-profilo-dash" class="barra-profilo dashboard-profile-bar nascosto">
-      <div class="profilo-info">
-        <span class="profilo-avatar" id="dash-profilo-avatar"></span>
-        <div class="dashboard-profile-copy">
-          <span class="profilo-saluto" id="dash-profilo-saluto"></span>
-          <p class="dashboard-profile-note">Filtra, controlla e modifica i task senza cambiare il flusso attuale.</p>
-        </div>
-      </div>
-    </div>
 
     <section class="sezione dashboard-controls-card" aria-label="Filtri dashboard">
       <details class="dashboard-filters-panel">
         <summary class="dashboard-filters-summary">
           <div>
             <h2>Filtri</h2>
-            <p class="dashboard-controls-copy">Priorita, stato e task con scadenza.</p>
           </div>
           <span class="dashboard-filters-summary-indicator" aria-hidden="true">Apri</span>
         </summary>
@@ -91,40 +66,17 @@
         <div class="dashboard-section-header">
           <div>
             <h2 id="dashboard-task-heading">Tutti i task</h2>
-            <p class="dashboard-section-copy">Vista completa. Tocca un task per aprire i dettagli e modificarlo.</p>
           </div>
         </div>
 
         <div id="contenitore-dashboard-azioni" class="dashboard-task-list"></div>
-        <p id="dashboard-azioni-vuote" class="sottotitolo nascosto">Nessun task disponibile.</p>
+        <p id="dashboard-azioni-vuote" class="sottotitolo dashboard-empty-state nascosto">Nessun task salvato</p>
       </section>
-
-      <div class="dashboard-side-column">
-        <aside class="sezione dashboard-side-card" id="box-dashboard-scadenze" aria-labelledby="dashboard-scadenze-heading">
-          <div class="dashboard-section-header">
-            <div>
-              <h2 id="dashboard-scadenze-heading">Scadenze</h2>
-              <p class="dashboard-section-copy">Solo i task con una data precisa.</p>
-            </div>
-          </div>
-
-          <div id="contenitore-dashboard-scadenze" class="dashboard-task-list"></div>
-          <p id="dashboard-scadenze-vuote" class="sottotitolo nascosto">Nessuna scadenza archiviata.</p>
-        </aside>
-
-        <aside class="sezione dashboard-side-card dashboard-side-card-secondary" id="box-dashboard-riprogrammare" aria-labelledby="dashboard-riprogrammare-heading">
-          <div class="dashboard-section-header dashboard-section-header-secondary">
-            <div>
-              <h2 id="dashboard-riprogrammare-heading">Da riprogrammare</h2>
-              <p class="dashboard-section-copy">Task flessibili o da riprendere in agenda.</p>
-            </div>
-          </div>
-
-          <div id="contenitore-dashboard-riprogrammare" class="dashboard-task-list"></div>
-          <p id="dashboard-riprogrammare-vuote" class="sottotitolo nascosto">Nessun task da riprogrammare.</p>
-        </aside>
-      </div>
     </main>
+
+    <div class="dashboard-bottom-actions">
+      <button type="button" id="bottone-svuota-dashboard">Svuota tutti i task</button>
+    </div>
 
   </div>
 

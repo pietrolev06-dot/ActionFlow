@@ -2,6 +2,7 @@
   var CAPACITOR_API_BASE_URL = "https://actionflow-2zwl.onrender.com";
   var API_BASE_URL = getApiBaseUrl();
   var OWNER_ALIAS_STORAGE_KEY = "actionflow_owner_aliases";
+  var THEME_STORAGE_KEY = "actionflow_theme";
   var MIGRATION_ARRAY_KEYS = [
     "actionflow_archivio_azioni",
     "actionflow_archivio_scadenze",
@@ -20,15 +21,21 @@
     loaded: false
   };
   var pendingSyncTimeout = null;
+  var nativeGoogleConfigPromise = null;
+  var nativeGoogleInitialized = false;
 
-  function isCapacitorRuntime() {
+  function getCapacitorPlatform() {
     var capacitor = global.Capacitor;
 
     if (!capacitor || typeof capacitor.getPlatform !== "function") {
-      return false;
+      return "web";
     }
 
-    return capacitor.getPlatform() !== "web";
+    return capacitor.getPlatform();
+  }
+
+  function isCapacitorRuntime() {
+    return getCapacitorPlatform() !== "web";
   }
 
   function getApiBaseUrl() {
@@ -62,6 +69,270 @@
     global.location.href = buildApiUrl(path);
   }
 
+  function getNativeAppleAuthPlugin() {
+    return global.Capacitor &&
+      global.Capacitor.Plugins &&
+      global.Capacitor.Plugins.SignInWithApple
+      ? global.Capacitor.Plugins.SignInWithApple
+      : null;
+  }
+
+  function canUseNativeAppleSignIn() {
+    return getCapacitorPlatform() === "ios" &&
+      !!(getNativeAppleAuthPlugin() && typeof getNativeAppleAuthPlugin().authorize === "function");
+  }
+
+  function getNativeGoogleAuthPlugin() {
+    return global.Capacitor &&
+      global.Capacitor.Plugins &&
+      global.Capacitor.Plugins.GoogleSignIn
+      ? global.Capacitor.Plugins.GoogleSignIn
+      : null;
+  }
+
+  function canUseNativeGoogleSignIn() {
+    return getCapacitorPlatform() === "ios" &&
+      !!(getNativeGoogleAuthPlugin() &&
+        typeof getNativeGoogleAuthPlugin().initialize === "function" &&
+        typeof getNativeGoogleAuthPlugin().signIn === "function");
+  }
+
+  function getNativeAppleAuthorizeOptions() {
+    return {
+      clientId: "com.pietrolevrini.flomind",
+      redirectURI: "capacitor://localhost",
+      scopes: "email name",
+      state: String(Date.now())
+    };
+  }
+
+  function getReadableAppleAuthError(error) {
+    if (!error) {
+      return "Accesso Apple non riuscito. Riprova.";
+    }
+
+    var message = typeof error.message === "string" && error.message.trim()
+      ? error.message.trim()
+      : String(error || "").trim();
+
+    return message || "Accesso Apple non riuscito. Riprova.";
+  }
+
+  function getReadableGoogleAuthError(error) {
+    if (!error) {
+      return "Accesso Google non riuscito. Riprova.";
+    }
+
+    var message = typeof error.message === "string" && error.message.trim()
+      ? error.message.trim()
+      : String(error || "").trim();
+
+    if (/cancel/i.test(message)) {
+      return "Accesso Google annullato.";
+    }
+
+    return message || "Accesso Google non riuscito. Riprova.";
+  }
+
+  function getNativeGoogleConfig() {
+    if (!nativeGoogleConfigPromise) {
+      console.log("[FloMind] Native Google config endpoint called", buildApiUrl("/auth/google/native/config"));
+      nativeGoogleConfigPromise = apiFetch("/auth/google/native/config")
+        .then(function(response) {
+          console.log("[FloMind] Native Google config response status", response.status);
+          return response.text().then(function(responseBody) {
+            var payload = {};
+
+            if (responseBody) {
+              try {
+                payload = JSON.parse(responseBody);
+              } catch (parseError) {
+                payload = { error: responseBody };
+              }
+            }
+
+            if (!response.ok) {
+              throw new Error(payload.error
+                ? payload.error + (payload.path ? ": " + payload.path : "")
+                : "Configurazione Google nativa non disponibile.");
+            }
+
+            var webClientId = payload.webClientId || payload.clientId || "";
+
+            if (!webClientId) {
+              throw new Error("Google web client ID mancante.");
+            }
+
+            return {
+              clientId: webClientId,
+              scopes: Array.isArray(payload.scopes) ? payload.scopes : ["openid", "profile", "email"]
+            };
+          });
+        })
+        .catch(function(error) {
+          nativeGoogleConfigPromise = null;
+          throw error;
+        });
+    }
+
+    return nativeGoogleConfigPromise;
+  }
+
+  function initializeNativeGoogleSignIn() {
+    var plugin = getNativeGoogleAuthPlugin();
+
+    if (nativeGoogleInitialized) {
+      return Promise.resolve();
+    }
+
+    if (!canUseNativeGoogleSignIn()) {
+      return Promise.reject(new Error("Native Google Sign-In is not available."));
+    }
+
+    return getNativeGoogleConfig()
+      .then(function(config) {
+        return plugin.initialize({
+          clientId: config.clientId,
+          scopes: config.scopes
+        });
+      })
+      .then(function() {
+        nativeGoogleInitialized = true;
+      });
+  }
+
+  function parseJsonResponse(response, fallbackMessage) {
+    return response.text().then(function(responseBody) {
+      var payload = {};
+
+      if (responseBody) {
+        try {
+          payload = JSON.parse(responseBody);
+        } catch (parseError) {
+          payload = { error: responseBody };
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(payload.error
+          ? payload.error + (payload.path ? ": " + payload.path : "")
+          : fallbackMessage);
+      }
+
+      return payload;
+    });
+  }
+
+  function signInWithNativeApple() {
+    var plugin = getNativeAppleAuthPlugin();
+
+    if (!canUseNativeAppleSignIn()) {
+      return Promise.reject(new Error("Native Apple Sign In is not available."));
+    }
+
+    return plugin.authorize(getNativeAppleAuthorizeOptions())
+      .then(function(result) {
+        var credentials = result && result.response ? result.response : {};
+
+        if (!credentials.identityToken) {
+          throw new Error("Apple identityToken mancante.");
+        }
+
+        return apiFetch("/auth/apple/native", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            identityToken: credentials.identityToken || "",
+            authorizationCode: credentials.authorizationCode || "",
+            userIdentifier: credentials.user || "",
+            email: credentials.email || "",
+            fullName: {
+              givenName: credentials.givenName || "",
+              familyName: credentials.familyName || ""
+            }
+          })
+        });
+      })
+      .then(function(response) {
+        return parseJsonResponse(response, "Native Apple Sign In backend exchange failed.");
+      })
+      .then(function() {
+        return loadCurrentUser();
+      })
+      .catch(function(error) {
+        console.error("[FloMind] Native Apple Sign In error", error);
+
+        throw new Error(getReadableAppleAuthError(error));
+      });
+  }
+
+  function signInWithNativeGoogle() {
+    var plugin = getNativeGoogleAuthPlugin();
+
+    if (!canUseNativeGoogleSignIn()) {
+      return Promise.reject(new Error("Native Google Sign-In is not available."));
+    }
+
+    console.log("[FloMind] Native Google sign in started");
+
+    return initializeNativeGoogleSignIn()
+      .then(function() {
+        return plugin.signIn();
+      })
+      .then(function(credentials) {
+        credentials = credentials || {};
+        console.log("[FloMind] Native Google token received", {
+          hasIdToken: Boolean(credentials.idToken),
+          hasServerAuthCode: Boolean(credentials.serverAuthCode),
+          hasEmail: Boolean(credentials.email),
+          userIdPresent: Boolean(credentials.userId)
+        });
+
+        if (!credentials.idToken && !credentials.serverAuthCode) {
+          throw new Error("Google idToken o serverAuthCode mancante.");
+        }
+
+        console.log("[FloMind] Native Google backend endpoint called", buildApiUrl("/auth/google/native"));
+        return apiFetch("/auth/google/native", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            idToken: credentials.idToken || "",
+            serverAuthCode: credentials.serverAuthCode || "",
+            userId: credentials.userId || "",
+            email: credentials.email || "",
+            displayName: credentials.displayName || "",
+            givenName: credentials.givenName || "",
+            familyName: credentials.familyName || "",
+            imageUrl: credentials.imageUrl || ""
+          })
+        });
+      })
+      .then(function(response) {
+        console.log("[FloMind] Native Google backend response status", response.status);
+        return parseJsonResponse(response, "Native Google Sign-In backend exchange failed.");
+      })
+      .then(function() {
+        return loadCurrentUser();
+      })
+      .then(function(user) {
+        console.log("[FloMind] Native Google user authenticated", {
+          provider: user && user.provider ? user.provider : null,
+          userId: user && user.id ? user.id : null
+        });
+        return user;
+      })
+      .catch(function(error) {
+        console.error("[FloMind] Native Google Sign-In error", error);
+
+        throw new Error(getReadableGoogleAuthError(error));
+      });
+  }
+
   function updateBackendLinks() {
     var links = global.document ? global.document.querySelectorAll("[data-api-route]") : [];
 
@@ -71,6 +342,61 @@
         links[i].setAttribute("href", buildApiUrl(route));
       }
     }
+  }
+
+  function getStoredThemePreference() {
+    try {
+      var theme = global.localStorage.getItem(THEME_STORAGE_KEY);
+      return theme === "light" || theme === "dark" || theme === "system" ? theme : "system";
+    } catch (e) {
+      return "system";
+    }
+  }
+
+  function getResolvedTheme(theme) {
+    if (theme === "light" || theme === "dark") {
+      return theme;
+    }
+
+    return global.matchMedia && global.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  function applyDocumentTheme() {
+    if (!global.document || !global.document.body) {
+      return;
+    }
+
+    var preference = getStoredThemePreference();
+    var resolvedTheme = getResolvedTheme(preference);
+    var themeColor = resolvedTheme === "dark" ? "#0d1420" : "#f7faff";
+    var metaThemeColor = global.document.querySelector('meta[name="theme-color"]');
+
+    global.document.documentElement.setAttribute("data-theme", resolvedTheme);
+    global.document.documentElement.setAttribute("data-theme-preference", preference);
+    global.document.documentElement.style.colorScheme = resolvedTheme;
+    global.document.body.setAttribute("data-theme", resolvedTheme);
+    global.document.body.setAttribute("data-theme-preference", preference);
+    global.document.body.style.colorScheme = resolvedTheme;
+
+    if (!metaThemeColor) {
+      metaThemeColor = global.document.createElement("meta");
+      metaThemeColor.setAttribute("name", "theme-color");
+      global.document.head.appendChild(metaThemeColor);
+    }
+    metaThemeColor.setAttribute("content", themeColor);
+  }
+
+  function applyRuntimeAttributes() {
+    if (!global.document || !global.document.body) {
+      return;
+    }
+
+    var platform = getCapacitorPlatform();
+    global.document.documentElement.dataset.capacitorPlatform = platform;
+    global.document.documentElement.classList.toggle("is-capacitor", platform !== "web");
+    global.document.body.dataset.capacitorPlatform = platform;
+    global.document.body.classList.toggle("is-capacitor", platform !== "web");
+    applyDocumentTheme();
   }
 
   function cloneRecord(record) {
@@ -588,12 +914,16 @@
     getCurrentUser: getCurrentUser,
     getCurrentUserId: getCurrentUserId,
     getScopedStorageKey: getScopedStorageKey,
+    canUseNativeGoogleSignIn: canUseNativeGoogleSignIn,
+    canUseNativeAppleSignIn: canUseNativeAppleSignIn,
     isLoaded: function() {
       return authState.loaded;
     },
     loadCurrentUser: loadCurrentUser,
     readOwnedArray: readOwnedArray,
     readScopedObject: readScopedObject,
+    signInWithNativeGoogle: signInWithNativeGoogle,
+    signInWithNativeApple: signInWithNativeApple,
     writeOwnedArray: writeOwnedArray,
     writeScopedObject: writeScopedObject
   };
@@ -603,12 +933,18 @@
     apiFetch: apiFetch,
     buildApiUrl: buildApiUrl,
     getFetchCredentials: getFetchCredentials,
+    getCapacitorPlatform: getCapacitorPlatform,
     isCapacitorRuntime: isCapacitorRuntime,
     navigateToBackend: navigateToBackend
   };
 
+  applyRuntimeAttributes();
+
   if (global.document && global.document.readyState === "loading") {
-    global.document.addEventListener("DOMContentLoaded", updateBackendLinks);
+    global.document.addEventListener("DOMContentLoaded", function() {
+      applyRuntimeAttributes();
+      updateBackendLinks();
+    });
   } else {
     updateBackendLinks();
   }

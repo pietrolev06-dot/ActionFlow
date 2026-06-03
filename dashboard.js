@@ -293,40 +293,15 @@ function renderDashboardProfile() {
   var avatar = document.getElementById("dash-profilo-avatar");
   var saluto = document.getElementById("dash-profilo-saluto");
   var titolo = document.getElementById("titolo-dashboard");
-  var effectiveUser = getDashboardEffectiveUserProfile(getDashboardCurrentUser());
-  var displayName = effectiveUser && (effectiveUser.name || effectiveUser.email)
-    ? (effectiveUser.name || effectiveUser.email)
-    : "";
-  var imageUrl = effectiveUser && (effectiveUser.picture || effectiveUser.image || effectiveUser.photoURL || effectiveUser.avatarUrl)
-    ? (effectiveUser.picture || effectiveUser.image || effectiveUser.photoURL || effectiveUser.avatarUrl)
-    : "";
 
-  if (!displayName) {
-    if (barra) barra.classList.add("nascosto");
-    if (titolo) titolo.textContent = "Dashboard";
-    if (avatar) {
-      avatar.textContent = "";
-      avatar.style.backgroundImage = "";
-      avatar.classList.remove("has-image");
-    }
-    if (saluto) saluto.textContent = "";
-    return;
-  }
-
-  if (barra) barra.classList.remove("nascosto");
-  if (titolo) titolo.textContent = "Dashboard di " + displayName;
-  if (saluto) saluto.textContent = "Ciao, " + displayName;
-
-  if (!avatar) return;
-
-  avatar.textContent = displayName.charAt(0).toUpperCase();
-  if (imageUrl) {
-    avatar.style.backgroundImage = 'url("' + imageUrl.replace(/"/g, '\\"') + '")';
-    avatar.classList.add("has-image");
-  } else {
+  if (barra) barra.classList.add("nascosto");
+  if (titolo) titolo.textContent = "Dashboard";
+  if (avatar) {
+    avatar.textContent = "";
     avatar.style.backgroundImage = "";
     avatar.classList.remove("has-image");
   }
+  if (saluto) saluto.textContent = "";
 }
 
 function generaIdAzione(testo) {
@@ -362,12 +337,18 @@ function getResolvedTheme(theme) {
     return theme;
   }
 
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function applyTheme(theme) {
   var resolvedTheme = getResolvedTheme(theme || "system");
+  var preference = theme === "light" || theme === "dark" || theme === "system" ? theme : "system";
+  document.documentElement.setAttribute("data-theme", resolvedTheme);
+  document.documentElement.setAttribute("data-theme-preference", preference);
+  document.documentElement.style.colorScheme = resolvedTheme;
   document.body.setAttribute("data-theme", resolvedTheme);
+  document.body.setAttribute("data-theme-preference", preference);
+  document.body.style.colorScheme = resolvedTheme;
 }
 
 function parseDataISOLocale(dataISO) {
@@ -512,10 +493,8 @@ function aggiornaScadenzaInLista(lista, vecchioTesto, nuovoTesto, nuovaData) {
   for (var i = 0; i < lista.length; i++) {
     if (lista[i].testo === vecchioTesto) {
       lista[i].testo = nuovoTesto;
-      if (nuovaData) {
-        lista[i].data = nuovaData;
-        lista[i].dataRisolta = nuovaData;
-      }
+      lista[i].data = nuovaData || null;
+      lista[i].dataRisolta = nuovaData || null;
       trovata = true;
     }
   }
@@ -700,6 +679,59 @@ function isDashboardTaskOverdue(task) {
   return giorni !== null && giorni < 0;
 }
 
+function formatDashboardValue(value, fallback) {
+  var normalized = value === null || value === undefined ? "" : String(value).trim();
+  return normalized || fallback;
+}
+
+function formatDashboardTaskDateDetail(taskDisplay) {
+  if (taskDisplay && taskDisplay.dataISO) {
+    return taskDisplay.labelScadenzaDinamica || formatDateForDisplay(taskDisplay.dataISO);
+  }
+
+  if (taskDisplay && taskDisplay.scadenzaOriginale) {
+    return getPlanningBadgeLabel(taskDisplay.scadenzaOriginale) || normalizeText(taskDisplay.scadenzaOriginale);
+  }
+
+  return "Da programmare";
+}
+
+function formatDashboardChoiceLabel(value) {
+  var normalized = formatDashboardValue(value, "");
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "";
+}
+
+function createDashboardDetailChip(label, value, extraClass) {
+  var chip = document.createElement("span");
+  chip.className = "dashboard-detail-chip" + (extraClass ? " " + extraClass : "");
+
+  var labelEl = document.createElement("span");
+  labelEl.className = "dashboard-detail-label";
+  labelEl.textContent = label;
+
+  var valueEl = document.createElement("span");
+  valueEl.className = "dashboard-detail-value";
+  valueEl.textContent = value;
+
+  chip.appendChild(labelEl);
+  chip.appendChild(valueEl);
+  return chip;
+}
+
+function createDashboardTrashIcon() {
+  var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("focusable", "false");
+  svg.setAttribute("aria-hidden", "true");
+
+  var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M9.25 4.5a1 1 0 0 1 .95-.68h3.6a1 1 0 0 1 .95.68l.25.75H18.5a.75.75 0 0 1 0 1.5h-.64l-.72 11.03A2.25 2.25 0 0 1 14.89 20H9.11a2.25 2.25 0 0 1-2.25-2.22L6.14 6.75H5.5a.75.75 0 0 1 0-1.5H9l.25-.75Zm-1 2.25.71 10.93a.75.75 0 0 0 .75.72h5.78a.75.75 0 0 0 .75-.72l.71-10.93h-8.7Zm2.49 2.25a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Zm3.5 0a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Z");
+  path.setAttribute("fill", "currentColor");
+
+  svg.appendChild(path);
+  return svg;
+}
+
 function buildDashboardTaskItem(az, completate, sectionKey, indexInSection) {
   var azDisplay = resolveTaskForDisplay(az);
   var idAz = generaIdAzione(az.testo);
@@ -813,46 +845,10 @@ function buildDashboardTaskItem(az, completate, sectionKey, indexInSection) {
   var bodyMeta = document.createElement("div");
   bodyMeta.className = "dashboard-task-body-meta";
 
-  if (durataStimata) {
-    var durata = document.createElement("span");
-    durata.className = "azione-durata dashboard-azione-durata";
-    durata.textContent = durataStimata + " min";
-    bodyMeta.appendChild(durata);
-  }
-
-  if ((sectionKey === "scadenze" || (sectionKey === "tutti" && azDisplay.dataISO)) && azDisplay.time) {
-    var bodyBadgeTime = document.createElement("span");
-    bodyBadgeTime.className = "badge-time dashboard-badge-time";
-    bodyBadgeTime.textContent = azDisplay.time;
-    bodyMeta.appendChild(bodyBadgeTime);
-  }
-
-  if (energiaStimata) {
-    var badgeEnergia = document.createElement("span");
-    badgeEnergia.className = "badge-energia badge-energia-" + energiaStimata;
-    badgeEnergia.textContent = "Energia: " + energiaStimata;
-    bodyMeta.appendChild(badgeEnergia);
-  }
-
-  if ((sectionKey === "da-programmare" || (sectionKey === "tutti" && !azDisplay.dataISO)) && azDisplay.scadenzaOriginale) {
-    var scadenzaOriginale = document.createElement("span");
-    scadenzaOriginale.className = "dashboard-task-secondary-copy";
-    scadenzaOriginale.textContent = normalizeText(azDisplay.scadenzaOriginale);
-    bodyMeta.appendChild(scadenzaOriginale);
-  } else if ((sectionKey === "scadenze" || (sectionKey === "tutti" && azDisplay.dataISO)) && azDisplay.scadenzaOriginale) {
-    var dettaglioScadenza = formatPreciseDateTimeForDisplay(azDisplay.dataISO, azDisplay.time);
-
-    if (!dettaglioScadenza && azDisplay.labelScadenzaDinamica && azDisplay.labelScadenzaDinamica !== azDisplay.scadenzaOriginale) {
-      dettaglioScadenza = azDisplay.scadenzaOriginale;
-    }
-
-    if (dettaglioScadenza) {
-      var scadenzaOriginalePrecisa = document.createElement("span");
-      scadenzaOriginalePrecisa.className = "dashboard-task-secondary-copy";
-      scadenzaOriginalePrecisa.textContent = dettaglioScadenza;
-      bodyMeta.appendChild(scadenzaOriginalePrecisa);
-    }
-  }
+  bodyMeta.appendChild(createDashboardDetailChip("Tempo", durataStimata ? durataStimata + " min" : "Non stimata"));
+  bodyMeta.appendChild(createDashboardDetailChip("Importanza", formatDashboardChoiceLabel(azDisplay.priorita || "media"), "priorita-" + (azDisplay.priorita || "media")));
+  bodyMeta.appendChild(createDashboardDetailChip("Energia", energiaStimata ? formatDashboardChoiceLabel(energiaStimata) : "Non definita", energiaStimata ? "badge-energia-" + energiaStimata : ""));
+  bodyMeta.appendChild(createDashboardDetailChip("Data", formatDashboardTaskDateDetail(azDisplay)));
 
   var actions = document.createElement("div");
   actions.className = "dashboard-task-actions";
@@ -874,7 +870,7 @@ function buildDashboardTaskItem(az, completate, sectionKey, indexInSection) {
   btnDelete.type = "button";
   btnDelete.className = "btn-modifica btn-elimina-task";
   btnDelete.setAttribute("aria-label", "Elimina task");
-  btnDelete.textContent = "🗑";
+  btnDelete.appendChild(createDashboardTrashIcon());
   btnDelete.addEventListener("click", function() {
     eliminaTaskDashboard(az.id);
   });
@@ -968,6 +964,7 @@ function renderDashboardAzioni() {
   contenitore.innerHTML = "";
 
   if (tutteLeAzioni.length === 0) {
+    vuoto.textContent = "Nessun task salvato";
     vuoto.classList.remove("nascosto");
     resetDashboardSideSections();
     return;
@@ -976,7 +973,7 @@ function renderDashboardAzioni() {
   var azioni = applicaFiltri(tutteLeAzioni);
 
   if (azioni.length === 0) {
-    vuoto.textContent = "Nessuna azione corrisponde ai filtri.";
+    vuoto.textContent = "Nessun task trovato";
     vuoto.classList.remove("nascosto");
     resetDashboardSideSections();
     return;
@@ -1010,28 +1007,24 @@ function attivaEditAzioneDash(li, azione) {
   var vecchiaPriorita = azione.priorita || "media";
   var vecchiaDurata = normalizzaDurataStimata(azione.durataStimataMinuti);
   var vecchiaEnergia = normalizzaEnergiaStimata(azione.energiaStimata) || "media";
-  var archScadenze = leggiArchivioScadenze();
+  var azioneDisplay = resolveTaskForDisplay(azione);
+  var scadenzaData = azioneDisplay.dataISO || "";
+  var details = li.querySelector(".dashboard-task-details");
+  var body = li.querySelector(".dashboard-task-body");
 
-  // Trova scadenza associata
-  var scadenzaData = "";
-  for (var i = 0; i < archScadenze.length; i++) {
-    if (archScadenze[i].testo === vecchioTesto && archScadenze[i].dataRisolta) {
-      scadenzaData = archScadenze[i].dataRisolta;
-      break;
-    }
-  }
-
-  li.innerHTML = "";
-  li.className = "azione-item azione-edit-mode";
+  if (!body) return;
+  if (details) details.open = true;
+  li.classList.add("azione-edit-mode");
+  body.innerHTML = "";
 
   var inputTesto = document.createElement("input");
   inputTesto.type = "text";
-  inputTesto.className = "edit-input edit-input-testo";
+  inputTesto.className = "dashboard-edit-control edit-input edit-input-testo";
   inputTesto.value = vecchioTesto;
 
   var selectPriorita = document.createElement("select");
-  selectPriorita.className = "edit-select";
-  ["alta", "media", "bassa"].forEach(function(p) {
+  selectPriorita.className = "dashboard-edit-control edit-select";
+  ["bassa", "media", "alta"].forEach(function(p) {
     var opt = document.createElement("option");
     opt.value = p;
     opt.textContent = p.charAt(0).toUpperCase() + p.slice(1);
@@ -1041,35 +1034,59 @@ function attivaEditAzioneDash(li, azione) {
 
   var inputData = document.createElement("input");
   inputData.type = "date";
-  inputData.className = "edit-input edit-input-data";
+  inputData.className = "dashboard-edit-control edit-input edit-input-data";
   inputData.value = scadenzaData;
 
   var inputDurata = document.createElement("input");
   inputDurata.type = "number";
   inputDurata.min = "1";
   inputDurata.step = "5";
-  inputDurata.className = "edit-input edit-input-data";
+  inputDurata.className = "dashboard-edit-control edit-input edit-input-data";
   inputDurata.value = vecchiaDurata || "";
-  inputDurata.placeholder = "Durata min";
+  inputDurata.placeholder = "Minuti";
 
   var selectEnergia = document.createElement("select");
-  selectEnergia.className = "edit-select";
+  selectEnergia.className = "dashboard-edit-control edit-select";
   ["bassa", "media", "alta"].forEach(function(e) {
     var optEnergia = document.createElement("option");
     optEnergia.value = e;
-    optEnergia.textContent = "Energia " + e;
+    optEnergia.textContent = e.charAt(0).toUpperCase() + e.slice(1);
     if (e === vecchiaEnergia) optEnergia.selected = true;
     selectEnergia.appendChild(optEnergia);
   });
 
+  function buildEditField(labelText, control, wide) {
+    var label = document.createElement("label");
+    label.className = "dashboard-edit-field" + (wide ? " dashboard-edit-field-wide" : "");
+
+    var span = document.createElement("span");
+    span.className = "dashboard-edit-label";
+    span.textContent = labelText;
+
+    label.appendChild(span);
+    label.appendChild(control);
+    return label;
+  }
+
+  var panel = document.createElement("div");
+  panel.className = "dashboard-edit-panel";
+
+  var grid = document.createElement("div");
+  grid.className = "dashboard-edit-grid";
+  grid.appendChild(buildEditField("Titolo", inputTesto, true));
+  grid.appendChild(buildEditField("Importanza", selectPriorita, false));
+  grid.appendChild(buildEditField("Data", inputData, false));
+  grid.appendChild(buildEditField("Durata", inputDurata, false));
+  grid.appendChild(buildEditField("Energia", selectEnergia, false));
+
   var btnSalva = document.createElement("button");
   btnSalva.type = "button";
-  btnSalva.className = "btn-salva-edit";
+  btnSalva.className = "btn-salva-edit dashboard-edit-save";
   btnSalva.textContent = "Salva";
 
   var btnAnnulla = document.createElement("button");
   btnAnnulla.type = "button";
-  btnAnnulla.className = "btn-modifica";
+  btnAnnulla.className = "btn-modifica dashboard-edit-cancel";
   btnAnnulla.textContent = "Annulla";
   btnAnnulla.addEventListener("click", function() {
     renderDashboardAzioni();
@@ -1088,6 +1105,7 @@ function attivaEditAzioneDash(li, azione) {
     aggiornaAzioneInLista(archAzioni, vecchioTesto, {
       testo: nuovoTesto,
       priorita: nuovaPriorita,
+      dataISO: nuovaData || null,
       durataStimataMinuti: nuovaDurata,
       energiaStimata: nuovaEnergia
     });
@@ -1099,7 +1117,7 @@ function attivaEditAzioneDash(li, azione) {
       priorita: nuovaPriorita,
       durataStimataMinuti: nuovaDurata,
       energiaStimata: nuovaEnergia,
-      dataISO: nuovaData || undefined
+      dataISO: nuovaData || null
     });
     salvaChecklistCorrente(checklist);
 
@@ -1128,13 +1146,14 @@ function attivaEditAzioneDash(li, azione) {
     renderDashboardScadenze();
   });
 
-  li.appendChild(inputTesto);
-  li.appendChild(selectPriorita);
-  li.appendChild(inputData);
-  li.appendChild(inputDurata);
-  li.appendChild(selectEnergia);
-  li.appendChild(btnSalva);
-  li.appendChild(btnAnnulla);
+  var editActions = document.createElement("div");
+  editActions.className = "dashboard-edit-actions";
+  editActions.appendChild(btnAnnulla);
+  editActions.appendChild(btnSalva);
+
+  panel.appendChild(grid);
+  panel.appendChild(editActions);
+  body.appendChild(panel);
 }
 
 function svuotaTuttiITask() {

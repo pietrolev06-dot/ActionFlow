@@ -36,6 +36,24 @@ function isAppleAuthConfigured() {
   return Boolean(clientId && teamId && keyId && privateKey && callbackUrl);
 }
 
+function getAppleNativeClientIds() {
+  const ids = [
+    process.env.APPLE_NATIVE_CLIENT_ID,
+    process.env.APPLE_IOS_BUNDLE_ID,
+    process.env.IOS_BUNDLE_ID,
+    process.env.CAPACITOR_APP_ID,
+    process.env.APP_BUNDLE_ID,
+    "com.pietrolevrini.flomind",
+    getAppleAuthConfig().clientId,
+  ];
+
+  return Array.from(new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)));
+}
+
+function isAppleNativeAuthConfigured() {
+  return getAppleNativeClientIds().length > 0;
+}
+
 function buildAppleAuthUrl(state) {
   const { clientId, callbackUrl } = getAppleAuthConfig();
   const params = new URLSearchParams({
@@ -177,7 +195,7 @@ function decodeJwtPart(part, label) {
   }
 }
 
-async function verifyAppleIdToken(idToken) {
+async function verifyAppleIdToken(idToken, allowedAudiences) {
   if (typeof idToken !== "string" || !idToken) {
     throw new Error("Missing Apple id_token.");
   }
@@ -213,7 +231,9 @@ async function verifyAppleIdToken(idToken) {
     throw new Error("Invalid Apple id_token signature.");
   }
 
-  const { clientId } = getAppleAuthConfig();
+  const expectedAudiences = Array.isArray(allowedAudiences) && allowedAudiences.length
+    ? allowedAudiences
+    : [getAppleAuthConfig().clientId].filter(Boolean);
   const audience = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
   const now = Math.floor(Date.now() / 1000);
 
@@ -221,7 +241,7 @@ async function verifyAppleIdToken(idToken) {
     throw new Error("Invalid Apple id_token issuer.");
   }
 
-  if (!audience.includes(clientId)) {
+  if (!expectedAudiences.some((expectedAudience) => audience.includes(expectedAudience))) {
     throw new Error("Invalid Apple id_token audience.");
   }
 
@@ -274,6 +294,22 @@ function parseAppleUser(userPayload) {
   };
 }
 
+function parseAppleNativeFullName(fullName) {
+  if (!fullName || typeof fullName !== "object") {
+    return null;
+  }
+
+  const parts = [
+    fullName.givenName,
+    fullName.middleName,
+    fullName.familyName,
+  ]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter(Boolean);
+
+  return parts.join(" ") || null;
+}
+
 async function authenticateWithApple(code, appleUserPayload) {
   const tokenData = await exchangeAppleCodeForTokens(code);
   const idTokenPayload = await verifyAppleIdToken(tokenData.id_token);
@@ -288,12 +324,37 @@ async function authenticateWithApple(code, appleUserPayload) {
   };
 }
 
+async function authenticateWithNativeApple(nativePayload) {
+  const payload = nativePayload && typeof nativePayload === "object" ? nativePayload : {};
+  const identityToken = typeof payload.identityToken === "string" ? payload.identityToken.trim() : "";
+  const idTokenPayload = await verifyAppleIdToken(identityToken, getAppleNativeClientIds());
+  const nativeEmail = typeof payload.email === "string" && payload.email.trim()
+    ? payload.email.trim()
+    : null;
+  const displayName = parseAppleNativeFullName(payload.fullName);
+
+  if (payload.userIdentifier && payload.userIdentifier !== idTokenPayload.sub) {
+    console.warn("[FloMind] native Apple user identifier differs from id_token sub", {
+      hasUserIdentifier: true,
+    });
+  }
+
+  return {
+    provider: AUTH_PROVIDERS.APPLE,
+    providerUserId: idTokenPayload.sub,
+    email: nativeEmail || idTokenPayload.email || null,
+    displayName: displayName || getAppleDisplayNameFallback(nativeEmail || idTokenPayload.email || null),
+  };
+}
+
 module.exports = {
   APPLE_AUTH_SCOPES,
   authenticateWithApple,
+  authenticateWithNativeApple,
   buildAppleAuthUrl,
   generateAppleClientSecret,
   getAppleAuthConfig,
   isAppleAuthConfigured,
+  isAppleNativeAuthConfigured,
   verifyAppleIdToken,
 };

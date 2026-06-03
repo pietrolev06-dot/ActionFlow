@@ -20,18 +20,25 @@
         </div>
 
         <div class="home-topbar-actions">
-          <button id="bottone-dashboard" class="home-topbar-link" type="button" onclick="window.location.href='dashboard.html'">
-            <span class="ui-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M5.5 4.5h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Zm8 0h5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Zm0 6.5h5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1Zm-8 2h5a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1Z" fill="currentColor"></path>
-              </svg>
-            </span>
-            <span>Attività</span>
-          </button>
+          <div class="home-segmented-control" aria-label="Sezioni principali">
+            <button id="bottone-dashboard" class="home-topbar-link" type="button" onclick="window.location.href='dashboard.html'">
+              <span class="ui-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M5.5 4.5h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Zm8 0h5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Zm0 6.5h5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1Zm-8 2h5a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1Z" fill="currentColor"></path>
+                </svg>
+              </span>
+              <span>Attività</span>
+            </button>
 
-          <button id="bottone-habits" class="home-topbar-link" type="button" onclick="window.location.href='habits.html'">
-            <span>Habits</span>
-          </button>
+            <button id="bottone-habits" class="home-topbar-link" type="button" onclick="window.location.href='habits.html'">
+              <span class="ui-icon home-ios-only-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M6.7 7.15a6.75 6.75 0 0 1 10.98-1.7l.82.78V4.25a.75.75 0 0 1 1.5 0v3.75a.75.75 0 0 1-.75.75H15.5a.75.75 0 0 1 0-1.5h1.92l-.77-.72a5.25 5.25 0 0 0-8.54 1.32.75.75 0 1 1-1.41-.5Zm10.6 9.7a6.75 6.75 0 0 1-10.98 1.7l-.82-.78v1.98a.75.75 0 0 1-1.5 0V16a.75.75 0 0 1 .75-.75H8.5a.75.75 0 0 1 0 1.5H6.58l.77.72a5.25 5.25 0 0 0 8.54-1.32.75.75 0 1 1 1.41.5Z" fill="currentColor"></path>
+                </svg>
+              </span>
+              <span>Habits</span>
+            </button>
+          </div>
 
           <div class="account-menu-shell">
             <button
@@ -44,30 +51,6 @@
             >
               <span id="account-menu-avatar" class="account-menu-avatar" aria-hidden="true"></span>
             </button>
-
-            <div id="account-menu-panel" class="account-menu-panel nascosto" aria-hidden="true">
-              <div class="account-menu-header">
-                <span id="account-status-label" class="account-status-label">Non connesso</span>
-              </div>
-
-              <div id="account-user-info" class="account-user-info nascosto">
-                <div id="account-user-avatar" class="profilo-avatar account-user-avatar">A</div>
-                <div class="account-user-copy">
-                  <strong id="account-user-name" class="account-user-name"></strong>
-                  <span id="account-user-email" class="account-user-email"></span>
-                </div>
-              </div>
-
-              <div id="account-menu-actions" class="account-menu-actions">
-                <button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>
-                <button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Accedi con Apple</button>
-                <button type="button" id="btn-account-settings" class="profilo-btn nascosto">Impostazioni</button>
-                <button type="button" id="btn-account-logout" class="profilo-btn profilo-btn-reset nascosto">Esci</button>
-                <div id="account-provider-placeholders" class="auth-placeholder-group" aria-label="Provider futuri">
-                  <button type="button" class="auth-btn auth-btn-secondary" disabled aria-disabled="true">Email presto</button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -92,10 +75,10 @@
           Scrivi qualcosa nel campo di testo prima di continuare.
         </div>
 
-        <button id="bottone-analizza" class="home-secondary-action home-analyze-button" onclick="analizzaTesto()">Analizza testo</button>
+        <button id="bottone-analizza" class="home-secondary-action home-analyze-button" onclick="analizzaTesto()">Analizza</button>
 
         <div class="home-primary-actions">
-          <button id="bottone-organizza-giornata" class="button-organize-day button-organize-day-primary home-action-button home-organize-button" type="button" onclick="organizeDay()">Organizza giornata</button>
+          <button id="bottone-organizza-giornata" class="button-organize-day button-organize-day-primary home-action-button home-organize-button" type="button">Organizza giornata</button>
           <button id="btn-open-focus-modal" class="home-focus-shortcut home-action-button" type="button" aria-label="Apri Focus">
             <span class="ui-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false">
@@ -131,6 +114,52 @@
     </section>
   </div>
 
+  <div id="account-menu-backdrop" class="account-backdrop nascosto" aria-hidden="true"></div>
+
+  <div id="account-menu-panel" class="account-menu-panel account-sheet nascosto" role="dialog" aria-modal="true" aria-labelledby="account-status-label" aria-hidden="true">
+    <div class="account-menu-header">
+      <span id="account-status-label" class="account-status-label">Non connesso</span>
+      <button id="btn-close-account-menu" class="overlay-icon-close" type="button" aria-label="Chiudi menu account">×</button>
+    </div>
+
+    <div id="account-user-info" class="account-user-info nascosto">
+      <div id="account-user-avatar" class="profilo-avatar account-user-avatar">A</div>
+      <div class="account-user-copy">
+        <strong id="account-user-name" class="account-user-name"></strong>
+        <span id="account-user-email" class="account-user-email"></span>
+      </div>
+    </div>
+
+    <div id="account-menu-actions" class="account-menu-actions">
+      <button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Continua con Apple</button>
+      <button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>
+      <button type="button" id="btn-account-settings" class="profilo-btn nascosto">Impostazioni</button>
+      <button type="button" id="btn-account-logout" class="profilo-btn profilo-btn-reset nascosto">Esci</button>
+      <div id="account-provider-placeholders" class="auth-placeholder-group" aria-label="Provider futuri">
+        <button type="button" class="auth-btn auth-btn-secondary" disabled aria-disabled="true">Email presto</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-startup-auth" class="modal-overlay startup-auth-overlay nascosto" aria-hidden="true" data-backdrop-close="false">
+    <div class="modal-shell startup-auth-shell" role="dialog" aria-modal="true" aria-labelledby="startup-auth-title">
+      <div class="sezione modal-section startup-auth-section">
+        <div class="startup-auth-brand">
+          <span class="startup-auth-logo" aria-hidden="true">FM</span>
+          <p class="page-kicker">FloMind</p>
+        </div>
+        <h2 id="startup-auth-title">Inizia con FloMind</h2>
+        <p class="page-subtitle">Accedi o continua come ospite. La scelta resta salvata su questo dispositivo.</p>
+
+        <div class="startup-auth-actions">
+          <button id="btn-startup-login-apple" class="auth-btn auth-btn-apple" type="button">Continua con Apple</button>
+          <button id="btn-startup-login-google" class="auth-btn auth-btn-primary" type="button">Accedi con Google</button>
+          <button id="btn-startup-continue-guest" class="auth-btn auth-btn-secondary" type="button">Continua come ospite</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-anteprima-analisi" class="modal-overlay nascosto" aria-hidden="true">
     <div class="modal-shell modal-analysis-preview" role="dialog" aria-modal="true" aria-labelledby="titolo-anteprima-analisi">
       <div class="sezione verde modal-section analysis-preview-section">
@@ -156,40 +185,29 @@
   <div id="modal-settings" class="modal-overlay nascosto" aria-hidden="true">
     <div class="modal-shell modal-settings-shell" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
       <div class="sezione blu modal-section settings-modal-section">
-        <div class="modal-header">
+        <div class="modal-header settings-modal-header">
           <div>
             <h2 id="settings-modal-title">Impostazioni</h2>
-            <p class="page-subtitle">Gestisci profilo, piano e preferenze dell'account.</p>
+            <p class="page-subtitle">Gestisci account e preferenze</p>
           </div>
-          <button id="btn-close-settings" class="modal-close-button" type="button" aria-label="Chiudi impostazioni">Chiudi</button>
+          <button id="btn-close-settings" class="settings-close-button overlay-icon-close" type="button" aria-label="Chiudi impostazioni">×</button>
         </div>
 
         <div class="settings-form">
-          <div class="settings-billing-card">
-            <div class="settings-billing-copy">
-              <span class="settings-billing-label">Piano attuale</span>
-              <strong id="settings-current-plan">Free</strong>
-              <small>FloMind Pro include tutte le funzioni premium, con 7 giorni di prova gratuita.</small>
-            </div>
-
-            <div class="settings-billing-actions">
-              <button id="btn-open-upgrade-modal" class="home-primary-action settings-upgrade-button" type="button">Passa a Pro</button>
-              <button id="btn-manage-billing" class="home-secondary-action settings-manage-billing-button nascosto" type="button">Gestisci abbonamento</button>
-            </div>
-          </div>
-
           <section class="settings-profile-card" aria-labelledby="settings-profile-title">
             <div class="settings-section-heading">
-              <span class="settings-billing-label">Profilo</span>
-              <strong id="settings-profile-title">Informazioni account</strong>
+              <strong id="settings-profile-title">Account</strong>
             </div>
 
-            <div class="settings-profile-shell">
-              <div id="settings-avatar-preview" class="profilo-avatar settings-profile-avatar">A</div>
+            <div class="settings-account-row">
+              <div class="settings-avatar-actions">
+                <div id="settings-avatar-preview" class="profilo-avatar settings-profile-avatar">A</div>
+                <button id="btn-settings-change-photo" class="settings-change-photo-button" type="button">Cambia foto</button>
+              </div>
 
               <div class="settings-profile-copy">
-                <strong id="settings-profile-name">Utente</strong>
-                <button id="btn-settings-change-photo" class="home-secondary-action settings-change-photo-button" type="button">Cambia foto</button>
+                <strong id="settings-profile-name">Ospite</strong>
+                <span id="settings-profile-subtitle" class="settings-profile-subtitle">Account locale</span>
               </div>
             </div>
 
@@ -201,10 +219,21 @@
             </label>
           </section>
 
+          <section class="settings-billing-card" aria-labelledby="settings-billing-title">
+            <div class="settings-section-heading">
+              <strong id="settings-billing-title">Piano attuale</strong>
+              <span id="settings-current-plan" class="settings-plan-status">Free</span>
+            </div>
+
+            <div class="settings-billing-actions">
+              <button id="btn-open-upgrade-modal" class="home-primary-action settings-upgrade-button" type="button">Passa a Pro</button>
+              <button id="btn-manage-billing" class="home-secondary-action settings-manage-billing-button nascosto" type="button">Gestisci abbonamento</button>
+            </div>
+          </section>
+
           <section class="settings-preferences-card" aria-labelledby="settings-preferences-title">
             <div class="settings-section-heading">
-              <span class="settings-billing-label">Preferenze</span>
-              <strong id="settings-preferences-title">Personalizza l'esperienza</strong>
+              <strong id="settings-preferences-title">Preferenze</strong>
             </div>
 
             <label class="settings-field">
@@ -216,18 +245,17 @@
               </select>
             </label>
 
-            <label class="settings-field settings-calendar-field">
-              <span>
-                <input id="settings-calendar-autosync-input" type="checkbox" />
-                Sync automatico con Google Calendar
+            <label class="settings-calendar-row">
+              <span class="settings-calendar-copy">
+                <strong>Sync Google Calendar</strong>
+                <small>Disponibile con FloMind Pro.</small>
               </span>
-              <small>I task con data, orario e durata verranno aggiunti automaticamente al calendario.</small>
+              <span class="settings-toggle">
+                <input id="settings-calendar-autosync-input" type="checkbox" />
+                <span class="settings-toggle-track"></span>
+              </span>
             </label>
           </section>
-
-          <div class="settings-actions">
-            <button id="btn-save-settings" class="home-primary-action settings-save-button" type="button">Salva</button>
-          </div>
         </div>
       </div>
     </div>
@@ -289,54 +317,50 @@
   <div id="modal-upgrade" class="modal-overlay nascosto" aria-hidden="true">
     <div class="modal-shell modal-upgrade-shell" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
       <div class="sezione modal-section upgrade-modal-section">
-        <div class="modal-header">
+        <div class="modal-header upgrade-modal-header">
           <div>
-            <p class="page-kicker">FloMind Pro</p>
-            <h2 id="upgrade-modal-title">Sblocca FloMind Pro</h2>
-            <p id="upgrade-modal-copy" class="page-subtitle">Scegli il piano Pro che preferisci. Checkout Stripe sicuro, prova gratuita di 7 giorni e gestione autonoma dell'abbonamento.</p>
+            <h2 id="upgrade-modal-title">FloMind Pro</h2>
+            <p id="upgrade-modal-copy" class="page-subtitle">Sblocca tutte le funzionalità premium.</p>
           </div>
-          <button id="btn-close-upgrade" class="modal-close-button" type="button" aria-label="Chiudi upgrade">Chiudi</button>
+          <button id="btn-close-upgrade" class="upgrade-close-button overlay-icon-close" type="button" aria-label="Chiudi upgrade">×</button>
         </div>
 
-        <div class="upgrade-plan-grid" aria-label="Piani disponibili">
-          <article class="upgrade-plan-card upgrade-plan-free">
-            <span class="upgrade-plan-name">Free</span>
-            <strong class="upgrade-plan-price">€0</strong>
-            <ul class="upgrade-feature-list">
-              <li>5 analisi al giorno</li>
-              <li>Organizza giornata base</li>
-              <li>Dashboard completa</li>
-            </ul>
-            <button id="btn-upgrade-later" class="home-secondary-action upgrade-free-button" type="button">Resta Free</button>
-          </article>
+        <div class="upgrade-current-plan" aria-label="Piano attuale">
+          <span>Piano attuale</span>
+          <strong id="upgrade-current-plan-label">Free</strong>
+          <em id="upgrade-current-plan-badge" class="upgrade-quota-badge">5 analisi rimanenti oggi</em>
+        </div>
 
+        <div class="upgrade-plan-grid" aria-label="Piano Pro">
           <article class="upgrade-plan-card upgrade-plan-pro">
-            <span class="upgrade-plan-name">Pro</span>
-            <div class="upgrade-billing-toggle" role="tablist" aria-label="Frequenza di fatturazione">
-              <button id="btn-upgrade-billing-monthly" class="upgrade-billing-option is-selected" type="button" aria-pressed="true">Mensile</button>
-              <button id="btn-upgrade-billing-yearly" class="upgrade-billing-option" type="button" aria-pressed="false">Annuale</button>
-            </div>
+            <span class="upgrade-plan-name">PRO</span>
 
             <div class="upgrade-price-stack">
               <div class="upgrade-price-row">
                 <strong id="upgrade-pro-price" class="upgrade-plan-price">€5<span>/mese</span></strong>
-                <span id="upgrade-pro-savings-inline" class="upgrade-savings-badge nascosto">Risparmi 33%</span>
+                <span id="upgrade-pro-savings-inline" class="upgrade-savings-badge nascosto">Risparmi 35%</span>
               </div>
-              <p id="upgrade-pro-secondary-price" class="upgrade-secondary-price nascosto">€3.33/mese</p>
+              <div class="upgrade-billing-toggle" role="tablist" aria-label="Frequenza di fatturazione">
+                <button id="btn-upgrade-billing-monthly" class="upgrade-billing-option is-selected" type="button" aria-pressed="true">Mensile</button>
+                <button id="btn-upgrade-billing-yearly" class="upgrade-billing-option" type="button" aria-pressed="false">Annuale</button>
+              </div>
             </div>
 
             <ul class="upgrade-feature-list upgrade-feature-list-pro">
-              <li>Analisi illimitate</li>
-              <li>Organizza giornata intelligente</li>
-              <li>Focus</li>
-              <li>Integrazione calendario</li>
-              <li>Sync multi-device</li>
+              <li>✓ Analisi illimitate</li>
+              <li>✓ Organizza giornata intelligente</li>
+              <li>✓ Focus</li>
+              <li>✓ Dashboard avanzata</li>
+              <li>✓ Google Calendar sync</li>
             </ul>
 
-            <p class="upgrade-trial-badge">Prova gratuita di 7 giorni inclusa</p>
-            <button id="btn-upgrade-cta" class="home-primary-action upgrade-modal-primary" type="button">Inizia Pro mensile</button>
+            <button id="btn-upgrade-cta" class="home-primary-action upgrade-modal-primary" type="button">Inizia prova gratuita</button>
+            <button id="btn-upgrade-later" class="upgrade-secondary-dismiss nascosto" type="button">Non ora</button>
+            <p class="upgrade-trial-badge">7 giorni gratis • annulla quando vuoi</p>
           </article>
         </div>
+
+        <p class="upgrade-footer-note">Pagamento gestito da Apple.</p>
       </div>
     </div>
   </div>

@@ -10,28 +10,43 @@
 </head>
 <body>
 
-  <div class="container habits-page-shell">
+  <div class="habits-page-shell">
+    <a class="habits-close-link overlay-icon-close" href="/" aria-label="Torna alla home">×</a>
     <header class="page-header habits-page-header">
       <div>
-        <p class="page-kicker">FloMind</p>
         <h1 class="page-title">Habits</h1>
-        <p class="page-subtitle">Gestisci le tue abitudini ricorrenti</p>
+        <p class="page-subtitle">Costruisci le tue routine quotidiane</p>
       </div>
 
       <div class="habits-page-actions">
-        <a class="page-back-link" href="/">Torna alla home</a>
         <button type="button" id="habit-new-button" class="habit-new-button">Nuova habit</button>
       </div>
     </header>
 
-    <section id="habit-form-card" class="sezione habits-form-card nascosto" aria-label="Form habit">
+    <section class="sezione habits-list-card" aria-labelledby="habits-list-heading">
+      <div class="habits-list-header">
+        <div>
+          <h2 id="habits-list-heading">Le tue habit</h2>
+          <p>Routine leggere, pronte per oggi.</p>
+        </div>
+      </div>
+
+      <div id="habits-list" class="habits-list"></div>
+      <div id="habits-empty" class="habits-empty-state nascosto">
+        <h3>Ancora nessuna habit</h3>
+        <p>Crea una ricorrenza semplice e lasciala vivere qui, senza duplicare task.</p>
+      </div>
+    </section>
+  </div>
+
+  <div id="habit-form-overlay" class="habit-form-overlay nascosto" aria-hidden="true">
+    <div id="habit-form-backdrop" class="habit-form-backdrop" aria-hidden="true"></div>
+
+    <section id="habit-form-card" class="sezione habits-form-card" role="dialog" aria-modal="true" aria-labelledby="habit-form-title">
       <button type="button" id="habit-form-close-button" class="habit-form-close-button" aria-label="Chiudi form habit">×</button>
 
       <div class="habits-form-head">
-        <div>
-          <p class="habits-form-eyebrow">Creazione rapida</p>
-          <p>Inserisci solo l'essenziale. FloMind stimerà il resto quando serve.</p>
-        </div>
+        <h2 id="habit-form-title">Nuova habit</h2>
       </div>
 
       <form id="habit-form" class="habit-form">
@@ -49,15 +64,6 @@
                 <option value="weekly">Ogni settimana</option>
               </select>
             </label>
-
-            <label class="habit-field">
-              <span>Importanza</span>
-              <select id="habit-importance" name="importance" required>
-                <option value="alta">Alta</option>
-                <option value="media" selected>Media</option>
-                <option value="bassa">Bassa</option>
-              </select>
-            </label>
           </div>
         </div>
 
@@ -65,9 +71,9 @@
           <summary class="habit-advanced-summary">
             <div>
               <h3>Preferenze avanzate</h3>
-              <p>Durata, energia, giorni specifici, orario e note.</p>
+              <p>Durata, energia, orario e note.</p>
             </div>
-            <span id="habit-advanced-summary-label" class="habit-advanced-summary-indicator">APRI</span>
+            <span id="habit-advanced-summary-label" class="habit-advanced-summary-indicator" aria-label="Apri preferenze avanzate"></span>
           </summary>
           <div class="habit-advanced-body">
             <div class="habit-advanced-group">
@@ -91,6 +97,15 @@
                     <option value="bassa">Bassa</option>
                     <option value="media">Media</option>
                     <option value="alta">Alta</option>
+                  </select>
+                </label>
+
+                <label class="habit-field">
+                  <span>Importanza</span>
+                  <select id="habit-importance" name="importance" required>
+                    <option value="alta">Alta</option>
+                    <option value="media" selected>Media</option>
+                    <option value="bassa">Bassa</option>
                   </select>
                 </label>
               </div>
@@ -137,21 +152,6 @@
           <p id="habit-form-status" class="habit-form-status" aria-live="polite"></p>
         </div>
       </form>
-    </section>
-
-    <section class="sezione habits-list-card" aria-labelledby="habits-list-heading">
-      <div class="dashboard-section-header">
-        <div>
-          <h2 id="habits-list-heading">Le tue habit</h2>
-          <p class="dashboard-section-copy">Una lista semplice delle ricorrenze attive.</p>
-        </div>
-      </div>
-
-      <div id="habits-list" class="habits-list"></div>
-      <div id="habits-empty" class="habits-empty-state nascosto">
-        <h3>Ancora nessuna habit</h3>
-        <p>Crea una ricorrenza semplice e lasciala vivere qui, senza duplicare task.</p>
-      </div>
     </section>
   </div>
 

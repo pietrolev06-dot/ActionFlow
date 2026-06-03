@@ -9,20 +9,18 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="container daily-plan-page-shell">
+  <div class="daily-plan-page-shell">
+    <a class="daily-plan-close-link overlay-icon-close" href="/" aria-label="Torna alla home">×</a>
+
     <header class="page-header daily-plan-page-header">
       <div>
-        <p class="page-kicker">FloMind</p>
         <h1 class="page-title">Organizza giornata</h1>
         <p id="piano-giornaliero-sommario" class="page-subtitle daily-plan-page-subtitle">Distribuisci i task della giornata in uno spazio più pulito e focalizzato.</p>
-      </div>
-
-      <div class="daily-plan-page-actions">
-        <a class="page-back-link" href="/">Torna alla home</a>
+        <div id="piano-giornaliero-summary-chips" class="daily-plan-summary-chips" aria-label="Riepilogo piano"></div>
       </div>
     </header>
 
-    <section id="sezione-piano-giornaliero" class="sezione blu sezione-piano-giornaliero daily-plan-page-section">
+    <section id="sezione-piano-giornaliero" class="sezione-piano-giornaliero daily-plan-page-section">
       <p id="piano-giornaliero-vuoto" class="piano-giornaliero-vuoto nascosto">Nessun task attivo disponibile per organizzare la giornata.</p>
 
       <div id="piano-giornaliero-grid" class="piano-giornaliero-grid">
@@ -34,6 +32,11 @@
         <div id="blocco-pomeriggio" class="piano-blocco piano-blocco-pomeriggio nascosto">
           <h3>Pomeriggio</h3>
           <ul id="lista-pomeriggio"></ul>
+        </div>
+
+        <div id="blocco-resta-da-fare-oggi" class="piano-blocco piano-blocco-resta-oggi nascosto">
+          <h3>Resta da fare oggi</h3>
+          <ul id="lista-resta-da-fare-oggi"></ul>
         </div>
 
         <div id="blocco-se-avanza-tempo" class="piano-blocco piano-blocco-extra nascosto">

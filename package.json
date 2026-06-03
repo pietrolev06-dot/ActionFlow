@@ -5,6 +5,7 @@
   "main": "checklist.js",
   "scripts": {
     "dev": "nodemon server.js",
+    "postinstall": "node scripts/patch-apple-sign-in-spm.js",
     "test": "node tests/datePropagationChecks.js",
     "start": "node server.js"
   },
@@ -13,9 +14,11 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/ios": "^8.3.4",
+    "@capawesome/capacitor-google-sign-in": "^0.1.2",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "openai": "^6.34.0",

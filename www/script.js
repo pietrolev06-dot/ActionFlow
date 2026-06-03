@@ -316,7 +316,7 @@ function openDailyPlanModal() {
   if (!modal) return;
 
   setVisibility(modal, true, "flex");
-  document.body.style.overflow = "hidden";
+  syncBlockingModalState();
 }
 
 function closeDailyPlanModal() {
@@ -324,7 +324,7 @@ function closeDailyPlanModal() {
   if (!modal) return;
 
   setVisibility(modal, false);
-  document.body.style.overflow = "";
+  syncBlockingModalState();
 }
 
 function openAnalysisPreviewModal() {
@@ -333,7 +333,7 @@ function openAnalysisPreviewModal() {
 
   modal.classList.remove("nascosto");
   modal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
+  syncBlockingModalState();
 }
 
 function closeAnalysisPreviewModal() {
@@ -343,7 +343,7 @@ function closeAnalysisPreviewModal() {
   modal.classList.add("nascosto");
   modal.setAttribute("aria-hidden", "true");
   pendingAnalysisResult = null;
-  document.body.style.overflow = document.getElementById("modal-organizza-giornata") && !document.getElementById("modal-organizza-giornata").classList.contains("nascosto") ? "hidden" : "";
+  syncBlockingModalState();
 }
 
 function renderAnalysisPreview(azioni, scadenze) {
@@ -472,9 +472,7 @@ function setupAnalysisPreviewModal() {
 
   if (modal) {
     modal.addEventListener("click", function(event) {
-      if (event.target === modal) {
-        closeAnalysisPreviewModal();
-      }
+      handleOverlayBackdropClick(event, closeAnalysisPreviewModal);
     });
   }
 
@@ -495,9 +493,7 @@ function setupDailyPlanModal() {
 
   if (modal) {
     modal.addEventListener("click", function(event) {
-      if (event.target === modal) {
-        closeDailyPlanModal();
-      }
+      handleOverlayBackdropClick(event, closeDailyPlanModal);
     });
   }
 
@@ -2165,6 +2161,51 @@ function appendTaskMeta(meta, task) {
   }
 }
 
+function createDailyPlanSummaryChip(text) {
+  var chip = document.createElement("span");
+  chip.className = "daily-plan-summary-chip";
+  chip.textContent = text;
+  return chip;
+}
+
+function renderDailyPlanSummaryChips(container, taskCount, morningMinutes, afternoonMinutes) {
+  if (!container) return;
+  container.innerHTML = "";
+  container.appendChild(createDailyPlanSummaryChip(taskCount + " task principali"));
+  container.appendChild(createDailyPlanSummaryChip("Mattina " + morningMinutes + " min"));
+  container.appendChild(createDailyPlanSummaryChip("Pomeriggio " + afternoonMinutes + " min"));
+}
+
+function appendDailyPlanCompactMeta(meta, task) {
+  var hasMeta = false;
+
+  if (isPlannerHabit(task)) {
+    var habit = document.createElement("span");
+    habit.className = "piano-habit-label";
+    habit.textContent = "Habit";
+    meta.appendChild(habit);
+    hasMeta = true;
+  }
+
+  var durataMinuti = normalizzaDurataStimata(task && task.durataStimataMinuti);
+  if (durataMinuti) {
+    if (hasMeta) {
+      var separator = document.createElement("span");
+      separator.className = "piano-task-meta-separator";
+      separator.textContent = "\u2022";
+      meta.appendChild(separator);
+    }
+
+    var durata = document.createElement("span");
+    durata.className = "piano-task-duration";
+    durata.textContent = durataMinuti + " min";
+    meta.appendChild(durata);
+    hasMeta = true;
+  }
+
+  return hasMeta;
+}
+
 function renderDailyPlanTasks(listId, tasks) {
   var lista = document.getElementById(listId);
   if (!lista) return;
@@ -2189,29 +2230,15 @@ function renderDailyPlanTasks(listId, tasks) {
 
     var testo = document.createElement("div");
     testo.className = "piano-task-testo";
-
-    if (isPlannerHabit(task)) {
-      if (task.time) {
-        var time = document.createElement("span");
-        time.className = "piano-habit-time";
-        time.textContent = task.time + " • ";
-        testo.appendChild(time);
-      }
-
-      testo.appendChild(document.createTextNode(task.testo));
-
-      var label = document.createElement("span");
-      label.className = "piano-habit-label";
-      if (isFlexiblePlannerHabit(task)) {
-        label.classList.add("piano-habit-label-flexible");
-      }
-      label.textContent = "↻ " + (task.recurringLabel || "Habit");
-      testo.appendChild(label);
-    } else {
-      testo.textContent = task.testo;
-    }
+    testo.textContent = task.testo;
 
     li.appendChild(testo);
+
+    var meta = document.createElement("div");
+    meta.className = "piano-task-meta";
+    if (appendDailyPlanCompactMeta(meta, task)) {
+      li.appendChild(meta);
+    }
 
     lista.appendChild(li);
   }
@@ -2777,6 +2804,7 @@ function renderDailyPlan(plan, showEmptyState) {
   var sezione = document.getElementById("sezione-piano-giornaliero");
   var emptyState = document.getElementById("piano-giornaliero-vuoto");
   var summary = document.getElementById("piano-giornaliero-sommario");
+  var summaryChips = document.getElementById("piano-giornaliero-summary-chips");
   var normalizedPlan = normalizeDailyPlan(plan);
   var sezioniPiano = getDailyPlanSections(normalizedPlan);
   var blocchi = [
@@ -2809,9 +2837,24 @@ function renderDailyPlan(plan, showEmptyState) {
 
   if (summary) {
     if (normalizedPlan && haContenuto) {
-      summary.textContent = "Aggiornato al " + (normalizedPlan.data || formatISO(inizioOggiLocale())) + " • " + taskPianificati + " task principali • Mattina " + (normalizedPlan.totali ? normalizedPlan.totali.minutiMattina || 0 : 0) + " min • Pomeriggio " + (normalizedPlan.totali ? normalizedPlan.totali.minutiPomeriggio || 0 : 0) + " min";
+      summary.textContent = "Aggiornato al " + (normalizedPlan.data || formatISO(inizioOggiLocale())) + ".";
     } else {
-      summary.textContent = "";
+      summary.textContent = "Distribuisci i task della giornata in uno spazio pi\u00f9 pulito e focalizzato.";
+    }
+  }
+
+  if (summaryChips) {
+    if (normalizedPlan && haContenuto) {
+      renderDailyPlanSummaryChips(
+        summaryChips,
+        taskPianificati,
+        normalizedPlan.totali ? normalizedPlan.totali.minutiMattina || 0 : 0,
+        normalizedPlan.totali ? normalizedPlan.totali.minutiPomeriggio || 0 : 0
+      );
+      summaryChips.classList.remove("nascosto");
+    } else {
+      summaryChips.innerHTML = "";
+      summaryChips.classList.add("nascosto");
     }
   }
 
@@ -2855,14 +2898,20 @@ function isDailyPlanPage() {
   return window.location.pathname === "/organizza-giornata" || window.location.pathname.endsWith("/organizza-giornata.html");
 }
 
+function navigateToDailyPlanPage() {
+  var targetUrl = new URL("organizza-giornata.html", window.location.href).href;
+  window.location.href = targetUrl;
+}
+
 function organizeDay() {
+  closeAccountMenu();
   var tasks = getSavedTasksForPlanning();
   var plan = buildDailyPlan(tasks);
   var savedPlan = saveDailyPlan(plan, tasks);
   renderDailyPlan(savedPlan, true);
 
   if (!isDailyPlanPage()) {
-    window.location.href = "/organizza-giornata";
+    navigateToDailyPlanPage();
   }
 
   return savedPlan;
@@ -4041,13 +4090,14 @@ async function analizzaTesto() {
   }
 
   if (!limitCheck.allowed) {
-    errore.textContent = "Hai raggiunto il limite di 5 analisi per oggi. Passa a Pro per continuare.";
+    errore.textContent = "Analisi gratuite terminate per oggi.";
     errore.style.display = "block";
     textarea.classList.remove("errore-campo");
     openUpgradeModal({
-      title: "Limite giornaliero raggiunto",
-      copy: "Con il piano gratuito puoi analizzare fino a 5 testi al giorno. Passa a Pro per continuare senza limiti.",
-      ctaLabel: "Passa a Pro"
+      title: "Hai terminato le analisi gratuite di oggi",
+      copy: "Torna domani oppure passa a FloMind Pro per analisi illimitate.",
+      ctaLabel: "Prova FloMind Pro",
+      secondaryLabel: "Non ora"
     });
     return;
   }
@@ -4787,12 +4837,58 @@ function avviaLoginGoogle() {
     return;
   }
 
+  if (window.ActionFlowApi && typeof window.ActionFlowApi.getCapacitorPlatform === "function" && window.ActionFlowApi.getCapacitorPlatform() === "ios") {
+    if (!(window.ActionFlowAuth &&
+      typeof window.ActionFlowAuth.signInWithNativeGoogle === "function" &&
+      typeof window.ActionFlowAuth.canUseNativeGoogleSignIn === "function" &&
+      window.ActionFlowAuth.canUseNativeGoogleSignIn())) {
+      alert("Impossibile completare l'accesso con Google. Riprova.");
+      return;
+    }
+
+    window.ActionFlowAuth.signInWithNativeGoogle()
+      .then(function() {
+        clearGuestUser();
+        closeStartupAuthModal();
+        closeAccountMenu();
+        mostraProfilo();
+      })
+      .catch(function(error) {
+        console.error("[FloMind] Native Google login failed", error);
+        alert(error && error.message ? error.message : "Impossibile completare l'accesso con Google. Riprova.");
+      });
+    return;
+  }
+
   navigateToBackend("/auth/google");
 }
 
 function avviaLoginApple() {
   if (isBetaExternalServicesDisabled()) {
     showBetaDisabledNotice();
+    return;
+  }
+
+  if (window.ActionFlowApi && typeof window.ActionFlowApi.getCapacitorPlatform === "function" && window.ActionFlowApi.getCapacitorPlatform() === "ios") {
+    if (!(window.ActionFlowAuth &&
+      typeof window.ActionFlowAuth.signInWithNativeApple === "function" &&
+      typeof window.ActionFlowAuth.canUseNativeAppleSignIn === "function" &&
+      window.ActionFlowAuth.canUseNativeAppleSignIn())) {
+      alert("Impossibile completare l'accesso con Apple. Riprova.");
+      return;
+    }
+
+    window.ActionFlowAuth.signInWithNativeApple()
+      .then(function() {
+        clearGuestUser();
+        closeStartupAuthModal();
+        closeAccountMenu();
+        mostraProfilo();
+      })
+      .catch(function(error) {
+        console.error("[FloMind] Native Apple login failed", error);
+        alert(error && error.message ? error.message : "Impossibile completare l'accesso con Apple. Riprova.");
+      });
     return;
   }
 
@@ -4846,11 +4942,13 @@ function buildIconLabel(iconName, label) {
 var GUEST_USER_STORAGE_KEY = "actionflow_guest_user";
 var GUEST_PROFILE_STORAGE_KEY = "flomind_guest_profile";
 var LEGACY_GUEST_PROFILE_STORAGE_KEY = "actionflow_profilo";
+var AUTH_ENTRY_PREFERENCE_STORAGE_KEY = "flomind_auth_entry_preference";
 var THEME_STORAGE_KEY = "actionflow_theme";
 var USER_SETTINGS_STORAGE_KEY = "actionflow_user_settings";
 var ANALYSIS_USAGE_STORAGE_KEY = "actionflow_analysis_usage";
 var FREE_ANALYSIS_DAILY_LIMIT = 5;
 var pendingSettingsImageDataUrl = "";
+var settingsAutosaveTimer = null;
 var selectedUpgradeBillingInterval = "monthly";
 var focusDateMode = "today";
 
@@ -4955,7 +5053,7 @@ function writeGuestProfile(profile) {
 
 function writeGuestUser(name) {
   var normalizedName = typeof name === "string" ? name.trim() : "";
-  if (!normalizedName) return null;
+  if (!normalizedName) normalizedName = "Ospite";
 
   var guestUser = {
     id: "guest-local",
@@ -4963,12 +5061,33 @@ function writeGuestUser(name) {
   };
 
   localStorage.setItem(GUEST_USER_STORAGE_KEY, JSON.stringify(guestUser));
+  localStorage.setItem(AUTH_ENTRY_PREFERENCE_STORAGE_KEY, "guest");
   return guestUser;
 }
 
 function clearGuestUser() {
   localStorage.removeItem(GUEST_USER_STORAGE_KEY);
   localStorage.removeItem(GUEST_PROFILE_STORAGE_KEY);
+  localStorage.removeItem(AUTH_ENTRY_PREFERENCE_STORAGE_KEY);
+}
+
+function hasExplicitGuestPreference() {
+  try {
+    return localStorage.getItem(AUTH_ENTRY_PREFERENCE_STORAGE_KEY) === "guest";
+  } catch (e) {
+    return false;
+  }
+}
+
+function chooseGuestMode() {
+  if (!readGuestUser()) {
+    writeGuestProfile({ displayName: "Ospite" });
+  } else {
+    localStorage.setItem(AUTH_ENTRY_PREFERENCE_STORAGE_KEY, "guest");
+  }
+
+  closeStartupAuthModal();
+  mostraProfilo();
 }
 
 function getCurrentAppUser() {
@@ -5045,25 +5164,50 @@ function checkAnalysisLimit(user) {
   };
 }
 
+function formatAnalysisQuotaText(remaining) {
+  if (remaining <= 0) {
+    return "Analisi gratuite terminate per oggi";
+  }
+
+  return remaining + (remaining === 1 ? " analisi rimanente oggi" : " analisi rimanenti oggi");
+}
+
 function openUpgradeModal(options) {
   var modal = document.getElementById("modal-upgrade");
   var title = document.getElementById("upgrade-modal-title");
   var copy = document.getElementById("upgrade-modal-copy");
+  var ctaButton = document.getElementById("btn-upgrade-cta");
+  var secondaryButton = document.getElementById("btn-upgrade-later");
   if (!modal) return;
 
+  modal.dataset.ctaLabel = options && options.ctaLabel ? options.ctaLabel : "";
+
   if (title) {
-    title.textContent = options && options.title ? options.title : "Passa a Pro";
+    title.textContent = options && options.title ? options.title : "FloMind Pro";
   }
 
   if (copy) {
-    copy.textContent = options && options.copy
-      ? options.copy
-      : "Questa funzione è disponibile con FloMind Pro.";
+    copy.textContent = options && options.copy ? options.copy : "Sblocca tutte le funzionalità premium.";
   }
 
+  if (ctaButton) {
+    ctaButton.textContent = modal.dataset.ctaLabel || "Inizia prova gratuita";
+  }
+
+  if (secondaryButton) {
+    if (options && options.secondaryLabel) {
+      secondaryButton.textContent = options.secondaryLabel;
+      secondaryButton.classList.remove("nascosto");
+    } else {
+      secondaryButton.classList.add("nascosto");
+    }
+  }
+
+  syncUpgradeCurrentPlanUi(getCurrentAppUser());
   setUpgradeBillingInterval("monthly");
   modal.classList.remove("nascosto");
   modal.setAttribute("aria-hidden", "false");
+  syncBlockingModalState();
 }
 
 function closeUpgradeModal() {
@@ -5072,6 +5216,7 @@ function closeUpgradeModal() {
 
   modal.classList.add("nascosto");
   modal.setAttribute("aria-hidden", "true");
+  syncBlockingModalState();
 }
 
 function requirePro(user, options) {
@@ -5140,11 +5285,12 @@ function setUpgradeBillingInterval(interval) {
 
   if (priceLabel) {
     priceLabel.innerHTML = normalizedInterval === "yearly"
-      ? '€40<span>/anno</span>'
+      ? '€39<span>/anno</span>'
       : '€5<span>/mese</span>';
   }
 
   if (savingsInlineLabel) {
+    savingsInlineLabel.textContent = "Risparmi 35%";
     savingsInlineLabel.classList.toggle("nascosto", normalizedInterval !== "yearly");
   }
 
@@ -5153,9 +5299,38 @@ function setUpgradeBillingInterval(interval) {
   }
 
   if (ctaButton) {
-    ctaButton.textContent = normalizedInterval === "yearly"
-      ? "Inizia Pro annuale"
-      : "Inizia Pro mensile";
+    var upgradeModal = document.getElementById("modal-upgrade");
+    ctaButton.textContent = upgradeModal && upgradeModal.dataset.ctaLabel
+      ? upgradeModal.dataset.ctaLabel
+      : "Inizia prova gratuita";
+  }
+}
+
+function syncUpgradeCurrentPlanUi(user) {
+  var planLabel = document.getElementById("upgrade-current-plan-label");
+  var planBadge = document.getElementById("upgrade-current-plan-badge");
+  var isPro = getCurrentUserPlan(user) === "pro";
+  var quota = checkAnalysisLimit(user);
+
+  if (planLabel) {
+    planLabel.textContent = isPro ? "Pro" : "Free";
+  }
+
+  if (planBadge) {
+    planBadge.classList.remove("is-low", "is-exhausted", "is-pro");
+
+    if (isPro || quota.limit === Infinity) {
+      planBadge.textContent = "Analisi illimitate";
+      planBadge.classList.add("is-pro");
+      return;
+    }
+
+    planBadge.textContent = formatAnalysisQuotaText(quota.remaining);
+    if (quota.remaining <= 0) {
+      planBadge.classList.add("is-exhausted");
+    } else if (quota.remaining === 1) {
+      planBadge.classList.add("is-low");
+    }
   }
 }
 
@@ -5241,7 +5416,7 @@ function syncSettingsBillingUi(user) {
   var isPro = getCurrentUserPlan(user) === "pro";
 
   if (currentPlan) {
-    currentPlan.textContent = getSettingsPlanLabel(user);
+    currentPlan.textContent = isPro ? "Pro" : "Free";
   }
 
   if (upgradeButton) {
@@ -5280,22 +5455,35 @@ function handleCheckoutQueryState() {
   }
 }
 
+function shouldShowStartupAuthPrompt() {
+  if (window.location.pathname !== "/" && !/\/index\.html$/.test(window.location.pathname)) {
+    return false;
+  }
+
+  if (getCurrentAppUser()) {
+    return false;
+  }
+
+  if (hasExplicitGuestPreference()) {
+    return false;
+  }
+
+  return !!(window.ActionFlowAuth && typeof window.ActionFlowAuth.isLoaded === "function" && window.ActionFlowAuth.isLoaded());
+}
+
 function syncAuthVisibility() {
-  if (window.location.pathname !== "/") {
+  var startupModal = document.getElementById("modal-startup-auth");
+
+  if (!startupModal) {
     return;
   }
 
-  if (readGuestUser()) {
+  if (shouldShowStartupAuthPrompt()) {
+    openStartupAuthModal();
     return;
   }
 
-  if (window.ActionFlowAuth && typeof window.ActionFlowAuth.isLoaded === "function" && !window.ActionFlowAuth.isLoaded()) {
-    return;
-  }
-
-  if (!getCurrentAppUser()) {
-    window.location.replace("/login");
-  }
+  closeStartupAuthModal();
 }
 
 function getAccountDisplayLabel(user) {
@@ -5329,12 +5517,29 @@ function getResolvedTheme(theme) {
     return theme;
   }
 
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function applyTheme(theme) {
   var resolvedTheme = getResolvedTheme(theme || "system");
+  var preference = theme === "light" || theme === "dark" || theme === "system" ? theme : "system";
+  var themeColor = resolvedTheme === "dark" ? "#0d1420" : "#f7faff";
+  var metaThemeColor = document.querySelector('meta[name="theme-color"]');
+
+  document.documentElement.setAttribute("data-theme", resolvedTheme);
+  document.documentElement.setAttribute("data-theme-preference", preference);
+  document.documentElement.style.colorScheme = resolvedTheme;
+
   document.body.setAttribute("data-theme", resolvedTheme);
+  document.body.setAttribute("data-theme-preference", preference);
+  document.body.style.colorScheme = resolvedTheme;
+
+  if (!metaThemeColor) {
+    metaThemeColor = document.createElement("meta");
+    metaThemeColor.setAttribute("name", "theme-color");
+    document.head.appendChild(metaThemeColor);
+  }
+  metaThemeColor.setAttribute("content", themeColor);
 }
 
 function saveThemePreference(theme) {
@@ -5439,10 +5644,11 @@ function applyAvatarContent(element, user, fallbackLabel) {
 function updateSettingsProfilePreview(user, nameOverride) {
   var avatarPreview = document.getElementById("settings-avatar-preview");
   var profileName = document.getElementById("settings-profile-name");
+  var profileSubtitle = document.getElementById("settings-profile-subtitle");
   var effectiveUser = getEffectiveUserProfile(user);
   var previewName = typeof nameOverride === "string" && nameOverride.trim()
     ? nameOverride.trim()
-    : (effectiveUser && (effectiveUser.name || effectiveUser.email)) || "Utente";
+    : (effectiveUser && (effectiveUser.name || effectiveUser.email)) || "Ospite";
   var previewUser = effectiveUser ? Object.assign({}, effectiveUser) : {};
 
   if (pendingSettingsImageDataUrl) {
@@ -5454,26 +5660,52 @@ function updateSettingsProfilePreview(user, nameOverride) {
     profileName.textContent = previewName;
   }
 
+  if (profileSubtitle) {
+    profileSubtitle.textContent = effectiveUser && effectiveUser.email ? effectiveUser.email : "Account locale";
+  }
+
   applyAvatarContent(avatarPreview, previewUser, previewName.charAt(0).toUpperCase());
 }
 
 function closeAccountMenu() {
   var menu = document.getElementById("account-menu-panel");
+  var backdrop = document.getElementById("account-menu-backdrop");
   var button = document.getElementById("account-menu-button");
+  var homeShell = document.querySelector(".home-shell");
 
   if (menu) {
     menu.classList.add("nascosto");
     menu.setAttribute("aria-hidden", "true");
+    menu.style.pointerEvents = "";
+  }
+
+  if (backdrop) {
+    backdrop.classList.add("nascosto");
+    backdrop.setAttribute("aria-hidden", "true");
+    backdrop.style.pointerEvents = "";
   }
 
   if (button) {
     button.setAttribute("aria-expanded", "false");
   }
+
+  if (homeShell) {
+    homeShell.style.pointerEvents = "";
+  }
+
+  document.body.classList.remove("account-menu-open");
+  syncBlockingModalState();
 }
 
 function openAccountMenu() {
   var menu = document.getElementById("account-menu-panel");
+  var backdrop = document.getElementById("account-menu-backdrop");
   var button = document.getElementById("account-menu-button");
+
+  if (backdrop) {
+    backdrop.classList.remove("nascosto");
+    backdrop.setAttribute("aria-hidden", "false");
+  }
 
   if (menu) {
     menu.classList.remove("nascosto");
@@ -5483,6 +5715,9 @@ function openAccountMenu() {
   if (button) {
     button.setAttribute("aria-expanded", "true");
   }
+
+  document.body.classList.add("account-menu-open");
+  syncBlockingModalState();
 }
 
 function toggleAccountMenu() {
@@ -5524,18 +5759,58 @@ async function eseguiLogoutAuth() {
   closeAccountMenu();
 }
 
+function syncBlockingModalState() {
+  var hasOpenModal = !!document.querySelector(".modal-overlay:not(.nascosto)");
+  var dailyPlanModal = document.getElementById("modal-organizza-giornata");
+  var hasOpenDailyPlanModal = !!(dailyPlanModal && !dailyPlanModal.classList.contains("nascosto"));
+  var hasOpenAccountMenu = document.body.classList.contains("account-menu-open");
+  document.documentElement.classList.toggle("modal-open", hasOpenModal || hasOpenDailyPlanModal || hasOpenAccountMenu);
+  document.body.classList.toggle("modal-open", hasOpenModal || hasOpenDailyPlanModal || hasOpenAccountMenu);
+}
+
+function openStartupAuthModal() {
+  var modal = document.getElementById("modal-startup-auth");
+  if (!modal || !modal.classList.contains("nascosto")) return;
+
+  closeAccountMenu();
+  modal.classList.remove("nascosto");
+  modal.setAttribute("aria-hidden", "false");
+  syncBlockingModalState();
+}
+
+function closeStartupAuthModal() {
+  var modal = document.getElementById("modal-startup-auth");
+  if (!modal) return;
+
+  modal.classList.add("nascosto");
+  modal.setAttribute("aria-hidden", "true");
+  syncBlockingModalState();
+}
+
+function handleOverlayBackdropClick(event, closeCallback) {
+  if (event.target !== event.currentTarget) return;
+  if (event.currentTarget.dataset.backdropClose === "false") return;
+  closeCallback();
+}
+
 function openSettingsModal() {
   var modal = document.getElementById("modal-settings");
   var authUser = getCurrentAppUser();
-  var effectiveUser = getEffectiveUserProfile(authUser);
+  var effectiveUser = getEffectiveUserProfile(authUser) || {
+    id: "local-settings",
+    provider: "local",
+    name: "Utente",
+    email: null,
+    theme: getStoredThemePreference()
+  };
   var nameInput = document.getElementById("settings-name-input");
   var fileInput = document.getElementById("settings-image-file-input");
   var themeSelect = document.getElementById("settings-theme-select");
   var calendarAutoSyncInput = document.getElementById("settings-calendar-autosync-input");
-  var calendarAutoSyncField = calendarAutoSyncInput ? calendarAutoSyncInput.closest(".settings-field") : null;
+  var calendarAutoSyncField = calendarAutoSyncInput ? calendarAutoSyncInput.closest(".settings-calendar-row") : null;
   var canUseCalendar = canUseCalendarIntegration(authUser);
 
-  if (!modal || !effectiveUser) return;
+  if (!modal) return;
 
   pendingSettingsImageDataUrl = "";
   if (nameInput) nameInput.value = effectiveUser.name || "";
@@ -5554,14 +5829,36 @@ function openSettingsModal() {
 
   modal.classList.remove("nascosto");
   modal.setAttribute("aria-hidden", "false");
+  syncBlockingModalState();
+}
+
+function scheduleSettingsAutosave(delay) {
+  if (settingsAutosaveTimer) {
+    clearTimeout(settingsAutosaveTimer);
+  }
+
+  settingsAutosaveTimer = setTimeout(function() {
+    settingsAutosaveTimer = null;
+    saveSettingsModal();
+  }, typeof delay === "number" ? delay : 500);
+}
+
+function flushSettingsAutosave() {
+  if (!settingsAutosaveTimer) return;
+
+  clearTimeout(settingsAutosaveTimer);
+  settingsAutosaveTimer = null;
+  saveSettingsModal();
 }
 
 function closeSettingsModal() {
   var modal = document.getElementById("modal-settings");
   if (!modal) return;
 
+  flushSettingsAutosave();
   modal.classList.add("nascosto");
   modal.setAttribute("aria-hidden", "true");
+  syncBlockingModalState();
 }
 
 function openFocusModal() {
@@ -5578,6 +5875,7 @@ function openFocusModal() {
   inizializzaFocusPage();
   modal.classList.remove("nascosto");
   modal.setAttribute("aria-hidden", "false");
+  syncBlockingModalState();
   startFocusRefreshInterval();
 }
 
@@ -5587,16 +5885,23 @@ function closeFocusModal() {
 
   modal.classList.add("nascosto");
   modal.setAttribute("aria-hidden", "true");
+  syncBlockingModalState();
   stopFocusRefreshInterval();
 }
 
-async function saveSettingsModal() {
+async function saveSettingsModal(options) {
+  options = options || {};
   var authUser = getCurrentAppUser();
   var nameInput = document.getElementById("settings-name-input");
   var themeSelect = document.getElementById("settings-theme-select");
   var calendarAutoSyncInput = document.getElementById("settings-calendar-autosync-input");
+  var shouldClose = options.closeOnSave === true;
 
-  if (!authUser) return;
+  if (!authUser) {
+    if (themeSelect) saveThemePreference(themeSelect.value || "system");
+    if (shouldClose) closeSettingsModal();
+    return;
+  }
 
   var profileImage = pendingSettingsImageDataUrl || (getAccountImage(getEffectiveUserProfile(authUser)) || "");
   var selectedTheme = themeSelect ? themeSelect.value : "system";
@@ -5625,7 +5930,7 @@ async function saveSettingsModal() {
     pendingSettingsImageDataUrl = "";
     updateSettingsProfilePreview(readGuestUser(), guestProfile.displayName || "Ospite");
     mostraProfilo();
-    closeSettingsModal();
+    if (shouldClose) closeSettingsModal();
     return;
   }
 
@@ -5653,7 +5958,7 @@ async function saveSettingsModal() {
     writeStoredUserSettings(settingsPayload);
     saveThemePreference(selectedTheme);
     mostraProfilo();
-    closeSettingsModal();
+    if (shouldClose) closeSettingsModal();
     return;
   }
 
@@ -5662,7 +5967,7 @@ async function saveSettingsModal() {
   }
 
   mostraProfilo();
-  closeSettingsModal();
+  if (shouldClose) closeSettingsModal();
 }
 
 function renderAccountMenu(user) {
@@ -5677,9 +5982,10 @@ function renderAccountMenu(user) {
   if (effectiveUser) {
     var authLabel = effectiveUser.name || effectiveUser.email || "Utente";
     var authInitial = authLabel.charAt(0).toUpperCase();
+    var isGuestUser = effectiveUser.provider === "guest";
 
     if (greetingText) greetingText.textContent = "Ciao " + authLabel + ", cosa vuoi fare oggi?";
-    statusLabel.textContent = "Connesso";
+    statusLabel.textContent = isGuestUser ? "Ospite" : "Connesso";
     applyAvatarContent(buttonAvatar, effectiveUser, authInitial);
     if (userInfo) {
       userInfo.classList.remove("nascosto");
@@ -5692,12 +5998,19 @@ function renderAccountMenu(user) {
 
       applyAvatarContent(document.getElementById("account-user-avatar"), effectiveUser, authInitial);
       document.getElementById("account-user-name").textContent = effectiveUser.name || "Utente";
-      document.getElementById("account-user-email").textContent = effectiveUser.email || (effectiveUser.provider === "guest" ? "Modalità ospite" : "Account collegato");
+      document.getElementById("account-user-email").textContent = effectiveUser.email || (isGuestUser ? "Modalità ospite" : "Account collegato");
     }
     if (actions) {
-      actions.innerHTML =
-        '<button type="button" id="btn-account-settings" class="profilo-btn">' + buildIconLabel("settings", "Impostazioni") + '</button>' +
-        '<button type="button" id="btn-account-logout" class="profilo-btn profilo-btn-reset">' + buildIconLabel("logout", "Esci") + '</button>';
+      if (isGuestUser) {
+        actions.innerHTML =
+          '<button type="button" id="btn-account-settings" class="profilo-btn">' + buildIconLabel("settings", "Impostazioni") + '</button>' +
+          '<button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Continua con Apple</button>' +
+          '<button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>';
+      } else {
+        actions.innerHTML =
+          '<button type="button" id="btn-account-settings" class="profilo-btn">' + buildIconLabel("settings", "Impostazioni") + '</button>' +
+          '<button type="button" id="btn-account-logout" class="profilo-btn profilo-btn-reset">' + buildIconLabel("logout", "Esci") + '</button>';
+      }
     }
     return;
   }
@@ -5706,21 +6019,19 @@ function renderAccountMenu(user) {
   statusLabel.textContent = "Non connesso";
   applyAvatarContent(buttonAvatar, null, getAccountDisplayLabel(null));
   if (userInfo) {
-    userInfo.classList.add("nascosto");
+    userInfo.classList.remove("nascosto");
     userInfo.innerHTML =
       '<div id="account-user-avatar" class="profilo-avatar account-user-avatar">A</div>' +
       '<div class="account-user-copy">' +
-      '<strong id="account-user-name" class="account-user-name"></strong>' +
-      '<span id="account-user-email" class="account-user-email"></span>' +
+      '<strong id="account-user-name" class="account-user-name">Account</strong>' +
+      '<span id="account-user-email" class="account-user-email">Non connesso</span>' +
       "</div>";
   }
   if (actions) {
     actions.innerHTML =
-      '<button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>' +
-      '<button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Accedi con Apple</button>' +
-      '<div id="account-provider-placeholders" class="auth-placeholder-group" aria-label="Provider futuri">' +
-      '<button type="button" class="auth-btn auth-btn-secondary" disabled aria-disabled="true">Email presto</button>' +
-      "</div>";
+      '<button type="button" id="btn-account-settings" class="profilo-btn">' + buildIconLabel("settings", "Impostazioni") + '</button>' +
+      '<button type="button" id="btn-account-login-apple" class="auth-btn auth-btn-apple">Continua con Apple</button>' +
+      '<button type="button" id="btn-account-login-google" class="auth-btn auth-btn-primary">Accedi con Google</button>';
   }
 }
 
@@ -5784,31 +6095,47 @@ document.addEventListener("DOMContentLoaded", function() {
 
     if (buttonTarget.id === "btn-account-logout") {
       eseguiLogoutAuth();
+      return;
+    }
+
+    if (buttonTarget.id === "btn-close-account-menu") {
+      closeAccountMenu();
     }
   });
+
+  var accountBackdrop = document.getElementById("account-menu-backdrop");
+  if (accountBackdrop) accountBackdrop.addEventListener("click", closeAccountMenu);
+
+  var startupAuthModal = document.getElementById("modal-startup-auth");
+  if (startupAuthModal) startupAuthModal.addEventListener("click", function(event) {
+    handleOverlayBackdropClick(event, closeStartupAuthModal);
+  });
+
+  var btnStartupLoginApple = document.getElementById("btn-startup-login-apple");
+  if (btnStartupLoginApple) btnStartupLoginApple.addEventListener("click", avviaLoginApple);
+
+  var btnStartupLoginGoogle = document.getElementById("btn-startup-login-google");
+  if (btnStartupLoginGoogle) btnStartupLoginGoogle.addEventListener("click", avviaLoginGoogle);
+
+  var btnStartupContinueGuest = document.getElementById("btn-startup-continue-guest");
+  if (btnStartupContinueGuest) btnStartupContinueGuest.addEventListener("click", chooseGuestMode);
 
   var btnOpenFocusModal = document.getElementById("btn-open-focus-modal");
   if (btnOpenFocusModal) btnOpenFocusModal.addEventListener("click", openFocusModal);
 
   var settingsModal = document.getElementById("modal-settings");
   if (settingsModal) settingsModal.addEventListener("click", function(event) {
-    if (event.target === settingsModal) {
-      closeSettingsModal();
-    }
+    handleOverlayBackdropClick(event, closeSettingsModal);
   });
 
   var focusModal = document.getElementById("modal-focus");
   if (focusModal) focusModal.addEventListener("click", function(event) {
-    if (event.target === focusModal) {
-      closeFocusModal();
-    }
+    handleOverlayBackdropClick(event, closeFocusModal);
   });
 
   var upgradeModal = document.getElementById("modal-upgrade");
   if (upgradeModal) upgradeModal.addEventListener("click", function(event) {
-    if (event.target === upgradeModal) {
-      closeUpgradeModal();
-    }
+    handleOverlayBackdropClick(event, closeUpgradeModal);
   });
 
   var btnCloseSettings = document.getElementById("btn-close-settings");
@@ -5858,9 +6185,6 @@ document.addEventListener("DOMContentLoaded", function() {
     openStripeCustomerPortal(btnManageBilling);
   });
 
-  var btnSaveSettings = document.getElementById("btn-save-settings");
-  if (btnSaveSettings) btnSaveSettings.addEventListener("click", saveSettingsModal);
-
   var btnSettingsChangePhoto = document.getElementById("btn-settings-change-photo");
   if (btnSettingsChangePhoto) btnSettingsChangePhoto.addEventListener("click", function() {
     var hiddenFileInput = document.getElementById("settings-image-file-input");
@@ -5873,6 +6197,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (!file) {
       pendingSettingsImageDataUrl = "";
       updateSettingsProfilePreview(getCurrentAppUser(), document.getElementById("settings-name-input") ? document.getElementById("settings-name-input").value : "");
+      scheduleSettingsAutosave();
       return;
     }
 
@@ -5880,6 +6205,7 @@ document.addEventListener("DOMContentLoaded", function() {
     reader.onload = function(loadEvent) {
       pendingSettingsImageDataUrl = typeof loadEvent.target.result === "string" ? loadEvent.target.result : "";
       updateSettingsProfilePreview(getCurrentAppUser(), document.getElementById("settings-name-input") ? document.getElementById("settings-name-input").value : "");
+      scheduleSettingsAutosave();
     };
     reader.readAsDataURL(file);
   });
@@ -5887,6 +6213,18 @@ document.addEventListener("DOMContentLoaded", function() {
   var settingsNameInput = document.getElementById("settings-name-input");
   if (settingsNameInput) settingsNameInput.addEventListener("input", function() {
     updateSettingsProfilePreview(getCurrentAppUser(), settingsNameInput.value);
+    scheduleSettingsAutosave();
+  });
+
+  var settingsThemeSelect = document.getElementById("settings-theme-select");
+  if (settingsThemeSelect) settingsThemeSelect.addEventListener("change", function() {
+    applyTheme(settingsThemeSelect.value || "system");
+    scheduleSettingsAutosave(120);
+  });
+
+  var settingsCalendarAutoSyncInput = document.getElementById("settings-calendar-autosync-input");
+  if (settingsCalendarAutoSyncInput) settingsCalendarAutoSyncInput.addEventListener("change", function() {
+    scheduleSettingsAutosave(120);
   });
 
   var systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
@@ -5914,6 +6252,9 @@ document.addEventListener("DOMContentLoaded", function() {
       closeSettingsModal();
       closeFocusModal();
       closeUpgradeModal();
+      if (!shouldShowStartupAuthPrompt()) {
+        closeStartupAuthModal();
+      }
     }
   });
 
@@ -5921,6 +6262,14 @@ document.addEventListener("DOMContentLoaded", function() {
   if (bottoneChecklist) {
     bottoneChecklist.addEventListener("click", function() {
       window.location.href = "checklist.html";
+    });
+  }
+
+  var bottoneOrganizzaGiornata = document.getElementById("bottone-organizza-giornata");
+  if (bottoneOrganizzaGiornata) {
+    bottoneOrganizzaGiornata.addEventListener("click", function(event) {
+      event.preventDefault();
+      organizeDay();
     });
   }
 
