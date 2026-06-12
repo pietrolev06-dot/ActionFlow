@@ -103,6 +103,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(createSessionMiddleware());
 app.use(attachCurrentUser);
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "flomind-api",
+    time: new Date().toISOString(),
+  });
+});
+
 console.log("[DEBUG] Mounting /auth router");
 app.use("/auth", (req, res, next) => {
   if (appConfig.BETA_DISABLE_EXTERNAL_SERVICES && (req.path === "/google" || req.path === "/apple")) {
