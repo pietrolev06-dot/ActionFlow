@@ -286,6 +286,66 @@ const ANALYSIS_SCHEMA = {
   }
 };
 
+const DAILY_PLANNER_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    title: { type: "string" },
+    durationMinutes: { type: "integer", minimum: 0 },
+    type: { type: "string", enum: ["task", "habit", "calendar"] },
+    why: { type: "string" }
+  },
+  required: ["id", "title", "durationMinutes", "type", "why"],
+  additionalProperties: false
+};
+
+const DAILY_PLANNER_SCHEMA = {
+  type: "json_schema",
+  name: "smart_daily_plan",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      summary: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          score: { type: "integer", minimum: 0, maximum: 100 },
+          reason: { type: "string" }
+        },
+        required: ["label", "score", "reason"],
+        additionalProperties: false
+      },
+      energy: {
+        type: "object",
+        properties: {
+          morning: { type: "integer", minimum: 0, maximum: 100 },
+          afternoon: { type: "integer", minimum: 0, maximum: 100 },
+          evening: { type: "integer", minimum: 0, maximum: 100 }
+        },
+        required: ["morning", "afternoon", "evening"],
+        additionalProperties: false
+      },
+      sections: {
+        type: "object",
+        properties: {
+          morning: { type: "array", items: DAILY_PLANNER_ITEM_SCHEMA },
+          afternoon: { type: "array", items: DAILY_PLANNER_ITEM_SCHEMA },
+          evening: { type: "array", items: DAILY_PLANNER_ITEM_SCHEMA }
+        },
+        required: ["morning", "afternoon", "evening"],
+        additionalProperties: false
+      },
+      deferred: {
+        type: "array",
+        items: DAILY_PLANNER_ITEM_SCHEMA
+      }
+    },
+    required: ["summary", "energy", "sections", "deferred"],
+    additionalProperties: false
+  }
+};
+
 // --- System prompt ---
 function buildInstructions(oggi) {
   return `Sei un assistente che analizza testi in italiano ed estrae azioni (task/to-do) e scadenze.
@@ -417,6 +477,334 @@ function normalizeAnalysisPayload(parsed) {
   result.daPianificare = daPianificare;
   return result;
 }
+
+function getFirstString(source, keys) {
+  if (!source || typeof source !== "object") return "";
+
+  for (let i = 0; i < keys.length; i++) {
+    const value = source[keys[i]];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+
+  return "";
+}
+
+function getNestedString(source, pathKeys) {
+  let current = source;
+
+  for (let i = 0; i < pathKeys.length; i++) {
+    if (!current || typeof current !== "object") return "";
+    current = current[pathKeys[i]];
+  }
+
+  if (typeof current === "string" && current.trim()) return current.trim();
+  if (typeof current === "number" && Number.isFinite(current)) return String(current);
+  return "";
+}
+
+function getFirstNumber(source, keys) {
+  if (!source || typeof source !== "object") return null;
+
+  for (let i = 0; i < keys.length; i++) {
+    const value = source[keys[i]];
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+
+  return null;
+}
+
+function getFirstBoolean(source, keys) {
+  if (!source || typeof source !== "object") return null;
+
+  for (let i = 0; i < keys.length; i++) {
+    if (typeof source[keys[i]] === "boolean") {
+      return source[keys[i]];
+    }
+  }
+
+  return null;
+}
+
+function normalizeDuration(value, fallback) {
+  const parsed = typeof value === "number" && Number.isFinite(value) ? value : Number(value);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.round(parsed));
+}
+
+function clampInteger(value, min, max, fallback) {
+  const parsed = typeof value === "number" && Number.isFinite(value) ? value : Number(value);
+
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(parsed)));
+}
+
+function normalizePlannerPriority(value) {
+  const raw = String(value || "").trim().toLowerCase();
+
+  if (["alta", "high", "urgent", "importante", "important"].includes(raw)) return "high";
+  if (["bassa", "low"].includes(raw)) return "low";
+  return "medium";
+}
+
+function normalizePlannerEnergy(value) {
+  const raw = String(value || "").trim().toLowerCase();
+
+  if (["alta", "high", "energized", "intensa"].includes(raw)) return "high";
+  if (["bassa", "low", "tired", "leggera"].includes(raw)) return "low";
+  return "medium";
+}
+
+function normalizePreference(value, allowed, fallback) {
+  const raw = String(value || "").trim().toLowerCase();
+  return allowed.includes(raw) ? raw : fallback;
+}
+
+function getCalendarEventDurationMinutes(event) {
+  const explicitDuration = getFirstNumber(event, [
+    "durationMinutes",
+    "durataMinuti",
+    "durataStimataMinuti",
+    "estimatedDurationMinutes"
+  ]);
+
+  if (explicitDuration !== null) {
+    return normalizeDuration(explicitDuration, 0);
+  }
+
+  const start = getNestedString(event, ["start", "dateTime"]) ||
+    getNestedString(event, ["start", "date"]) ||
+    getFirstString(event, ["start", "startTime", "dateTime"]);
+  const end = getNestedString(event, ["end", "dateTime"]) ||
+    getNestedString(event, ["end", "date"]) ||
+    getFirstString(event, ["end", "endTime"]);
+
+  if (!start || !end) return 0;
+
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return 0;
+  }
+
+  return Math.round((endMs - startMs) / 60000);
+}
+
+function normalizePlannerTask(task, index) {
+  const title = getFirstString(task, ["title", "testo", "text", "name", "summary", "label"]);
+
+  return {
+    id: getFirstString(task, ["id", "taskId", "uid"]) || `task:${index + 1}`,
+    title: title || `Task ${index + 1}`,
+    durationMinutes: normalizeDuration(getFirstNumber(task, [
+      "durationMinutes",
+      "durataStimataMinuti",
+      "estimatedDurationMinutes",
+      "minutes",
+      "duration"
+    ]), 30),
+    importance: normalizePlannerPriority(getFirstString(task, ["importance", "priorita", "priority"])),
+    energy: normalizePlannerEnergy(getFirstString(task, ["energy", "energiaStimata", "energyLevel"])),
+    dueDate: getFirstString(task, ["dueDate", "dataISO", "date", "deadline"]),
+    dueLabel: getFirstString(task, ["dueLabel", "scadenzaOriginale"]),
+    time: getFirstString(task, ["time", "startTime", "orario"]),
+    completed: getFirstBoolean(task, ["completed", "completato"]) === true,
+    preferredSlot: getFirstString(task, ["preferredSlot", "slotPreferito"]),
+    notes: getFirstString(task, ["notes", "description", "descrizione"])
+  };
+}
+
+function normalizePlannerHabit(habit, index) {
+  const title = getFirstString(habit, ["title", "testo", "text", "name", "summary", "label"]);
+  const fixedSchedule = getFirstBoolean(habit, ["fixedSchedule", "fixed", "hasFixedTime"]) === true;
+
+  return {
+    id: getFirstString(habit, ["id", "habitId", "uid"]) || `habit:${index + 1}`,
+    title: title || `Habit ${index + 1}`,
+    durationMinutes: normalizeDuration(getFirstNumber(habit, [
+      "durationMinutes",
+      "durataStimataMinuti",
+      "estimatedDurationMinutes",
+      "fixedDurationMinutes",
+      "minutes",
+      "duration"
+    ]), 20),
+    importance: normalizePlannerPriority(getFirstString(habit, ["importance", "priorita", "priority"])),
+    energy: normalizePlannerEnergy(getFirstString(habit, ["energy", "energiaStimata", "energyLevel"])),
+    frequency: getFirstString(habit, ["frequency", "frequenza"]),
+    completed: getFirstBoolean(habit, ["completed", "completedToday", "completato"]) === true,
+    fixedSchedule,
+    time: getFirstString(habit, ["time", "fixedStartTime", "startTime", "orario"]),
+    preferredSlot: getFirstString(habit, ["preferredSlot", "slotPreferito"])
+  };
+}
+
+function normalizePlannerCalendarEvent(event, index) {
+  const start = getNestedString(event, ["start", "dateTime"]) ||
+    getNestedString(event, ["start", "date"]) ||
+    getFirstString(event, ["start", "startTime", "dateTime"]);
+  const end = getNestedString(event, ["end", "dateTime"]) ||
+    getNestedString(event, ["end", "date"]) ||
+    getFirstString(event, ["end", "endTime"]);
+  const title = getFirstString(event, ["title", "summary", "name", "text", "label"]);
+  const transparency = getFirstString(event, ["transparency", "availability"]);
+
+  return {
+    id: getFirstString(event, ["id", "eventId", "uid"]) || `calendar:${index + 1}`,
+    title: title || `Calendar event ${index + 1}`,
+    start,
+    end,
+    durationMinutes: getCalendarEventDurationMinutes(event),
+    allDay: Boolean(getNestedString(event, ["start", "date"]) && !getNestedString(event, ["start", "dateTime"])),
+    busy: transparency.toLowerCase() !== "transparent" && transparency.toLowerCase() !== "free",
+    location: getFirstString(event, ["location", "luogo"])
+  };
+}
+
+function buildDailyPlannerInput(body) {
+  const payload = body && typeof body === "object" ? body : {};
+  const preferences = payload.preferences && typeof payload.preferences === "object" ? payload.preferences : {};
+
+  return {
+    today: new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" }),
+    locale: getFirstString(payload, ["locale"]) || "it-IT",
+    preferences: {
+      energy: normalizePreference(preferences.energy, ["tired", "normal", "energized"], "normal"),
+      availableTime: normalizePreference(preferences.availableTime, ["short", "medium", "full"], "medium"),
+      mainFocus: normalizePreference(preferences.mainFocus, ["work", "health", "study", "personal", "balanced"], "balanced")
+    },
+    tasks: (Array.isArray(payload.tasks) ? payload.tasks : []).map(normalizePlannerTask),
+    habits: (Array.isArray(payload.habits) ? payload.habits : []).map(normalizePlannerHabit),
+    calendarEvents: (Array.isArray(payload.calendarEvents) ? payload.calendarEvents : []).map(normalizePlannerCalendarEvent)
+  };
+}
+
+function buildDailyPlannerInstructions(locale) {
+  return `You are a smart daily planning engine for FloMind.
+
+Return only the strict JSON object requested by the schema. Do not include markdown or prose outside JSON.
+
+User language:
+- Write summary.label, summary.reason and every item.why in the user's language inferred from locale "${locale}".
+- If locale starts with "it", use natural Italian.
+
+Planning rules:
+- Calendar events are fixed occupied blocks. Keep every busy calendar event in the correct section based on start/end time and do not place flexible tasks in a way that overloads those sections.
+- Calendar events with explicit start/end times define occupied capacity. Morning is before 12:00, afternoon is 12:00-17:59, evening is 18:00 or later.
+- If a calendar event spans sections, place it in the section where it starts and account for the occupied time in later sections.
+- Explicit-time tasks or fixed-schedule habits should stay in their natural section unless they conflict with calendar events; defer them if they cannot fit.
+- Do not overload the day. Prefer a realistic plan with margin over a packed list.
+- Respect preferences.availableTime: short means only essentials, medium means a balanced plan, full allows more work but still preserves breaks.
+- Respect preferences.energy: tired means lighter load and fewer high-energy items, normal means balanced, energized means high-energy work can be planned earlier.
+- Respect preferences.mainFocus by favoring matching tasks or habits when choosing among similar items.
+- Prefer important, urgent, or high-energy tasks earlier in the day when they fit.
+- Habits should support the day, not crowd out urgent or important tasks.
+- Put useful but non-essential items in deferred.
+- Include calendar items in sections with type "calendar"; include unscheduled tasks or habits in deferred.
+- Use the exact item id from the input. Never invent an id when an input id exists.
+- durationMinutes must be realistic and non-negative.
+- summary.score is 0-100 and reflects how balanced and achievable the plan is.`;
+}
+
+function normalizePlanItem(item, fallbackType) {
+  const source = item && typeof item === "object" ? item : {};
+  const type = ["task", "habit", "calendar"].includes(source.type) ? source.type : fallbackType;
+
+  return {
+    id: typeof source.id === "string" && source.id.trim() ? source.id.trim() : crypto.randomUUID(),
+    title: typeof source.title === "string" && source.title.trim() ? source.title.trim() : "Elemento pianificato",
+    durationMinutes: normalizeDuration(source.durationMinutes, 0),
+    type: type || "task",
+    why: typeof source.why === "string" && source.why.trim() ? source.why.trim() : "Inserito nel piano della giornata."
+  };
+}
+
+function normalizeDailyPlannerPayload(parsed) {
+  const source = parsed && typeof parsed === "object" ? parsed : {};
+  const summary = source.summary && typeof source.summary === "object" ? source.summary : {};
+  const energy = source.energy && typeof source.energy === "object" ? source.energy : {};
+  const sections = source.sections && typeof source.sections === "object" ? source.sections : {};
+
+  return {
+    summary: {
+      label: typeof summary.label === "string" && summary.label.trim() ? summary.label.trim() : "Giornata equilibrata",
+      score: clampInteger(summary.score, 0, 100, 70),
+      reason: typeof summary.reason === "string" && summary.reason.trim() ? summary.reason.trim() : "Piano creato con carico sostenibile."
+    },
+    energy: {
+      morning: clampInteger(energy.morning, 0, 100, 80),
+      afternoon: clampInteger(energy.afternoon, 0, 100, 60),
+      evening: clampInteger(energy.evening, 0, 100, 35)
+    },
+    sections: {
+      morning: (Array.isArray(sections.morning) ? sections.morning : []).map((item) => normalizePlanItem(item, "task")),
+      afternoon: (Array.isArray(sections.afternoon) ? sections.afternoon : []).map((item) => normalizePlanItem(item, "task")),
+      evening: (Array.isArray(sections.evening) ? sections.evening : []).map((item) => normalizePlanItem(item, "task"))
+    },
+    deferred: (Array.isArray(source.deferred) ? source.deferred : []).map((item) => normalizePlanItem(item, "task"))
+  };
+}
+
+function hasInvalidPlannerArrays(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return true;
+  if (
+    body.preferences !== undefined &&
+    (!body.preferences || typeof body.preferences !== "object" || Array.isArray(body.preferences))
+  ) {
+    return true;
+  }
+
+  return (body.tasks !== undefined && !Array.isArray(body.tasks)) ||
+    (body.habits !== undefined && !Array.isArray(body.habits)) ||
+    (body.calendarEvents !== undefined && !Array.isArray(body.calendarEvents));
+}
+
+// --- Route POST /plan-day ---
+app.post("/plan-day", async (req, res) => {
+  if (hasInvalidPlannerArrays(req.body)) {
+    return res.status(400).json({ error: "Body non valido: tasks, habits e calendarEvents devono essere array." });
+  }
+
+  const plannerInput = buildDailyPlannerInput(req.body || {});
+
+  try {
+    const response = await openai.responses.create({
+      model: MODEL,
+      instructions: buildDailyPlannerInstructions(plannerInput.locale),
+      input: JSON.stringify(plannerInput),
+      text: {
+        format: DAILY_PLANNER_SCHEMA
+      },
+      temperature: 0.2,
+      store: false
+    });
+
+    const parsed = normalizeDailyPlannerPayload(JSON.parse(response.output_text));
+    return res.json(parsed);
+  } catch (err) {
+    console.error("[FloMind] Errore OpenAI planner:", err.message || err);
+    return res.status(500).json({ error: "Impossibile generare il piano giornaliero." });
+  }
+});
 
 // --- Route POST /api/analyze ---
 app.post("/api/analyze", async (req, res) => {

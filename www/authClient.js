@@ -157,14 +157,44 @@
                 : "Configurazione Google nativa non disponibile.");
             }
 
+            console.log("[FloMind] Native Google config object", payload);
+
+            var iosClientId = payload.iosClientId || "";
             var webClientId = payload.webClientId || payload.clientId || "";
+            var serverClientId = payload.serverClientId || webClientId;
+            var reversedClientId = payload.reversedClientId || "";
+            var missingKeys = [];
+
+            if (!iosClientId) {
+              missingKeys.push("iosClientId");
+            }
 
             if (!webClientId) {
-              throw new Error("Google web client ID mancante.");
+              missingKeys.push("webClientId");
+            }
+
+            if (!serverClientId) {
+              missingKeys.push("serverClientId");
+            }
+
+            if (!reversedClientId) {
+              missingKeys.push("reversedClientId");
+            }
+
+            if (missingKeys.length) {
+              console.error("[FloMind] Native Google config missing keys", {
+                missingKeys: missingKeys,
+                payload: payload
+              });
+              throw new Error("Configurazione Google nativa incompleta.");
             }
 
             return {
-              clientId: webClientId,
+              clientId: serverClientId,
+              iosClientId: iosClientId,
+              webClientId: webClientId,
+              serverClientId: serverClientId,
+              reversedClientId: reversedClientId,
               scopes: Array.isArray(payload.scopes) ? payload.scopes : ["openid", "profile", "email"]
             };
           });

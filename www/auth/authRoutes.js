@@ -11,6 +11,7 @@ const {
   buildGoogleAuthUrl,
   createOAuthState,
   getGoogleAuthConfig,
+  getGoogleReversedClientId,
   isGoogleAuthConfigured,
   isGoogleNativeAuthConfigured,
 } = require("./googleAuth");
@@ -267,25 +268,48 @@ function createAuthRouter() {
 
   router.get("/google/native/config", (req, res) => {
     const googleConfig = getGoogleAuthConfig();
+    const reversedClientId = getGoogleReversedClientId(googleConfig.iosClientId);
+    const missingEnv = [
+      ["GOOGLE_IOS_CLIENT_ID", googleConfig.iosClientId],
+      ["GOOGLE_CLIENT_ID", googleConfig.clientId],
+    ].filter(([, value]) => !value).map(([name]) => name);
+    const missingKeys = [
+      ["iosClientId", googleConfig.iosClientId],
+      ["webClientId", googleConfig.clientId],
+      ["serverClientId", googleConfig.clientId],
+      ["reversedClientId", reversedClientId],
+    ].filter(([, value]) => !value).map(([name]) => name);
+
     console.log("[FloMind] native Google config requested", {
       hasGoogleClientId: Boolean(googleConfig.clientId),
       hasGoogleIosClientId: Boolean(googleConfig.iosClientId),
+      hasGoogleReversedClientId: Boolean(reversedClientId),
+      missingEnv,
+      missingKeys,
     });
 
-    if (!isGoogleNativeAuthConfigured()) {
+    if (!isGoogleNativeAuthConfigured() || missingEnv.length || missingKeys.length) {
       return res.status(500).json({
         error: "Configurazione Google nativa incompleta.",
+        missingEnv,
+        missingKeys,
         checks: {
           hasGoogleClientId: Boolean(googleConfig.clientId),
           hasGoogleIosClientId: Boolean(googleConfig.iosClientId),
+          hasGoogleReversedClientId: Boolean(reversedClientId),
         },
       });
     }
 
-    return res.json({
+    const configPayload = {
       iosClientId: googleConfig.iosClientId,
       webClientId: googleConfig.clientId,
-    });
+      serverClientId: googleConfig.clientId,
+      reversedClientId,
+    };
+
+    console.log("[FloMind] native Google config response", configPayload);
+    return res.json(configPayload);
   });
 
   router.post("/google/native", async (req, res) => {

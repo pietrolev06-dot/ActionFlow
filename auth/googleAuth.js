@@ -25,6 +25,16 @@ function getGoogleAuthConfig() {
   };
 }
 
+function getGoogleReversedClientId(clientId) {
+  const normalizedClientId = String(clientId || "").trim();
+
+  if (!normalizedClientId.endsWith(".apps.googleusercontent.com")) {
+    return "";
+  }
+
+  return `com.googleusercontent.apps.${normalizedClientId.replace(".apps.googleusercontent.com", "")}`;
+}
+
 function isGoogleAuthConfigured() {
   const { clientId, clientSecret, redirectUri } = getGoogleAuthConfig();
   return Boolean(clientId && clientSecret && redirectUri);
@@ -347,6 +357,7 @@ module.exports = {
   createOAuthState,
   getGoogleAuthConfig,
   getGoogleNativeClientIds,
+  getGoogleReversedClientId,
   GOOGLE_AUTH_SCOPES,
   isGoogleAuthConfigured,
   isGoogleNativeAuthConfigured,
