@@ -81,6 +81,72 @@ assert.deepStrictEqual(parsedTasksWithTime("Domani alle 9 chiamare Marco e prepa
   { testo: "Preparare il pranzo", dataISO: domani, time: "09:00" }
 ]);
 
+const structuredActivityResult = context.convertiRispostaBackend({
+  activities: [
+    {
+      type: "event",
+      title: "Dentista",
+      date: domani,
+      startTime: "15:00",
+      endTime: "15:30",
+      indicativeTimeSlot: null,
+      durationMinutes: 30,
+      importanceScore: 70,
+      urgencyScore: 80,
+      energyRequiredScore: 20,
+      flexibilityScore: 0,
+      category: "health",
+      dependencies: []
+    },
+    {
+      type: "deadline",
+      title: "Esame di fisica",
+      date: domani,
+      startTime: null,
+      endTime: null,
+      indicativeTimeSlot: null,
+      durationMinutes: 0,
+      importanceScore: 90,
+      urgencyScore: 80,
+      energyRequiredScore: 0,
+      flexibilityScore: 0,
+      category: "study",
+      dependencies: []
+    },
+    {
+      type: "task",
+      title: "Studiare fisica",
+      date: null,
+      startTime: null,
+      endTime: null,
+      indicativeTimeSlot: null,
+      durationMinutes: 60,
+      importanceScore: 70,
+      urgencyScore: 20,
+      energyRequiredScore: 80,
+      flexibilityScore: 90,
+      category: "study",
+      dependencies: []
+    }
+  ]
+});
+
+assert.deepStrictEqual(JSON.parse(JSON.stringify(structuredActivityResult.azioni.map((task) => ({
+  testo: task.testo,
+  dataISO: task.dataISO,
+  time: task.time
+})))), [
+  { testo: "Dentista", dataISO: domani, time: "15:00" },
+  { testo: "Studiare fisica", dataISO: null, time: null }
+]);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(structuredActivityResult.scadenze.map((deadline) => ({
+  testo: deadline.testo,
+  data: deadline.data,
+  dataRisolta: deadline.dataRisolta
+})))), [
+  { testo: "Esame di fisica", data: domani, dataRisolta: domani }
+]);
+
 const backendLikeResult = context.propagaDateDiFrase(
   "Domani devo chiamare Marco, preparare il pranzo, studiare analisi e pagare l'affitto",
   {
@@ -124,6 +190,7 @@ const tomorrowPlan = context.buildDailyPlan([
 
 assert.strictEqual(tomorrowPlan.mattina.length, 0, "Tomorrow tasks should not appear in today's Mattina");
 assert.strictEqual(tomorrowPlan.pomeriggio.length, 0, "Tomorrow tasks should not appear in today's Pomeriggio");
+assert.strictEqual(tomorrowPlan.sera.length, 0, "Tomorrow tasks should not appear in today's Sera");
 assert.strictEqual(tomorrowPlan.seAvanzaTempo.length, 0, "Tomorrow tasks should not appear in today's Se avanza tempo");
 
 const overflowPlan = context.buildDailyPlan([
@@ -135,12 +202,10 @@ const overflowPlan = context.buildDailyPlan([
   { testo: "Task 6", priorita: "alta", dataISO: oggi, scadenzaOriginale: "Oggi", durataStimataMinuti: 15, energiaStimata: "bassa" }
 ]);
 
-console.assert(
-  JSON.stringify(overflowPlan.mattina.map((task) => task.testo)) === JSON.stringify(["Task 1", "Task 2", "Task 3"]) &&
-    JSON.stringify(overflowPlan.pomeriggio.map((task) => task.testo)) === JSON.stringify(["Task 4", "Task 5"]) &&
-    overflowPlan.seAvanzaTempo.length === 1,
-  "Overflow tasks should move to Se avanza tempo only after the first 5 tasks"
-);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(overflowPlan.mattina.map((task) => task.testo))), ["Task 1", "Task 3", "Task 5"]);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(overflowPlan.pomeriggio.map((task) => task.testo))), ["Task 2", "Task 4"]);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(overflowPlan.daRimandare.map((task) => task.testo))), ["Task 6"]);
+assert.strictEqual(Boolean(overflowPlan.daRimandare[0].whyDeferred), true);
 
 const habitAwarePlan = context.buildDailyPlan([
   { testo: "Task reale 1", priorita: "alta", dataISO: oggi, durataStimataMinuti: 20, energiaStimata: "bassa" },
@@ -150,10 +215,11 @@ const habitAwarePlan = context.buildDailyPlan([
   { id: "habit-acqua", habitId: "acqua", isHabit: true, fixedSchedule: false, testo: "Bere acqua", priorita: "bassa", dataISO: oggi, durataStimataMinuti: 15, energiaStimata: "bassa", completato: false }
 ]);
 
+const habitPlanSections = context.getDailyPlanSections(habitAwarePlan);
 const habitPlanMainTexts = JSON.parse(JSON.stringify(
-  habitAwarePlan.mattina.concat(habitAwarePlan.pomeriggio).map((task) => task.testo)
+  habitPlanSections.mattina.concat(habitPlanSections.pomeriggio).concat(habitPlanSections.sera).map((task) => task.testo)
 ));
-const habitPlanExtraTexts = JSON.parse(JSON.stringify(habitAwarePlan.seAvanzaTempo.map((task) => task.testo)));
+const habitPlanExtraTexts = JSON.parse(JSON.stringify(habitPlanSections.daRimandare.map((task) => task.testo)));
 
 assert.strictEqual(habitPlanMainTexts.indexOf("Palestra") !== -1, true);
 assert.strictEqual(habitPlanExtraTexts.indexOf("Task reale 3") !== -1, true);
@@ -166,14 +232,11 @@ const nonDueHabitPlan = context.buildDailyPlan([
 ]);
 
 const nonDueHabitTexts = JSON.parse(JSON.stringify(
-  nonDueHabitPlan.mattina.concat(nonDueHabitPlan.pomeriggio).concat(nonDueHabitPlan.seAvanzaTempo).map((task) => task.testo)
+  nonDueHabitPlan.mattina.concat(nonDueHabitPlan.pomeriggio).concat(nonDueHabitPlan.sera).concat(nonDueHabitPlan.daRimandare).map((task) => task.testo)
 ));
-const flexibleHabit = nonDueHabitPlan.mattina.concat(nonDueHabitPlan.pomeriggio).concat(nonDueHabitPlan.seAvanzaTempo).find((task) => task.testo === "Habit weekly later");
 assert.strictEqual(nonDueHabitTexts.indexOf("Habit daily") !== -1, true);
 assert.strictEqual(nonDueHabitTexts.indexOf("Habit weekly due") !== -1, true);
-assert.strictEqual(nonDueHabitTexts.indexOf("Habit weekly later") !== -1, true);
-assert.strictEqual(flexibleHabit.flexibleOccurrence, true);
-assert.strictEqual(flexibleHabit.recurringLabel, "Anticipabile");
+assert.strictEqual(nonDueHabitTexts.indexOf("Habit weekly later"), -1);
 
 const strictFutureTaskPlan = context.buildDailyPlan([
   { testo: "Task futuro", priorita: "alta", dataISO: domani, durataStimataMinuti: 15, energiaStimata: "bassa" },
@@ -181,10 +244,44 @@ const strictFutureTaskPlan = context.buildDailyPlan([
 ]);
 
 const strictFutureTaskTexts = JSON.parse(JSON.stringify(
-  strictFutureTaskPlan.mattina.concat(strictFutureTaskPlan.pomeriggio).concat(strictFutureTaskPlan.seAvanzaTempo).map((task) => task.testo)
+  strictFutureTaskPlan.mattina.concat(strictFutureTaskPlan.pomeriggio).concat(strictFutureTaskPlan.sera).concat(strictFutureTaskPlan.daRimandare).map((task) => task.testo)
 ));
 assert.strictEqual(strictFutureTaskTexts.indexOf("Task futuro"), -1);
 assert.strictEqual(strictFutureTaskTexts.indexOf("Task oggi") !== -1, true);
+
+const completedAndDeadlinePlan = context.buildDailyPlan([
+  { testo: "Task completato", priorita: "alta", dataISO: oggi, durataStimataMinuti: 20, energiaStimata: "bassa", completato: true },
+  { testo: "Esame di fisica", title: "Esame di fisica", type: "deadline", activityType: "deadline", priorita: "alta", dataISO: oggi, durataStimataMinuti: 0, energiaStimata: "bassa", completato: false },
+  { testo: "Studiare fisica", priorita: "alta", dataISO: oggi, relatedDeadlineTitle: "Esame di fisica", relatedDeadlineISO: oggi, durataStimataMinuti: 45, energiaStimata: "alta", completato: false }
+]);
+const completedAndDeadlineTexts = JSON.parse(JSON.stringify(
+  completedAndDeadlinePlan.mattina
+    .concat(completedAndDeadlinePlan.pomeriggio)
+    .concat(completedAndDeadlinePlan.sera)
+    .concat(completedAndDeadlinePlan.daRimandare)
+    .map((task) => task.testo)
+));
+assert.strictEqual(completedAndDeadlineTexts.indexOf("Task completato"), -1);
+assert.strictEqual(completedAndDeadlineTexts.indexOf("Esame di fisica"), -1);
+assert.strictEqual(completedAndDeadlineTexts.indexOf("Studiare fisica") !== -1, true);
+assert.strictEqual(Boolean(completedAndDeadlinePlan.mattina.concat(completedAndDeadlinePlan.pomeriggio).concat(completedAndDeadlinePlan.sera)[0].why), true);
+
+const fixedEventOverlapPlan = context.buildDailyPlan([
+  { id: "event:dentista", testo: "Dentista", title: "Dentista", type: "event", activityType: "event", priorita: "alta", dataISO: oggi, time: "10:00", startTime: "10:00", endTime: "11:00", durataStimataMinuti: 60, energiaStimata: "bassa" },
+  { id: "task:overlap", testo: "Chiamare Marco", title: "Chiamare Marco", type: "task", activityType: "task", priorita: "alta", dataISO: oggi, time: "10:30", startTime: "10:30", durataStimataMinuti: 30, energiaStimata: "bassa" }
+]);
+assert.strictEqual(fixedEventOverlapPlan.mattina.some((task) => task.testo === "Dentista" && task.type === "event"), true);
+assert.strictEqual(fixedEventOverlapPlan.daRimandare.some((task) => task.testo === "Chiamare Marco" && /sovrapp|overlap|vincoli/.test(task.whyDeferred)), true);
+
+const calendarBlockPlan = context.buildDailyPlan([
+  { id: "task:calendar-overlap", testo: "Scrivere report", title: "Scrivere report", type: "task", activityType: "task", priorita: "alta", dataISO: oggi, time: "09:30", startTime: "09:30", durataStimataMinuti: 30, energiaStimata: "alta" }
+], {
+  calendarEvents: [
+    { id: "calendar:apple", title: "Apple Calendar occupato", start: oggi + "T09:00:00", end: oggi + "T10:00:00", busy: true }
+  ]
+});
+assert.strictEqual(calendarBlockPlan.mattina.some((task) => task.testo === "Apple Calendar occupato" && task.type === "calendar"), true);
+assert.strictEqual(calendarBlockPlan.daRimandare.some((task) => task.testo === "Scrivere report"), true);
 
 const stableCompletionPlan = context.normalizeDailyPlan({
   data: oggi,

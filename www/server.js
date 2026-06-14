@@ -231,57 +231,56 @@ const ANALYSIS_SCHEMA = {
   schema: {
     type: "object",
     properties: {
-      azioni: {
+      activities: {
         type: "array",
         items: {
           type: "object",
           properties: {
-            testo: { type: "string", description: "Azione pulita e concisa, es. 'Pagare la fattura'" },
-            priorita: { type: "string", enum: ["alta", "media", "bassa"], description: "alta = entro 2 giorni, media = 3-7 giorni, bassa = oltre 7 o senza scadenza" },
-            scadenzaOriginale: { type: ["string", "null"], description: "Riferimento temporale così come scritto dall'utente, es. 'domani', '30 aprile'. null se assente." },
-            dataISO: { type: ["string", "null"], description: "Data in formato ISO yyyy-MM-dd calcolata dal riferimento. null se non determinabile." },
-            time: { type: ["string", "null"], description: "Orario estratto in formato HH:mm (24h), es. '16:00', '09:30'. null se assente." },
-            durataStimataMinuti: { type: "integer", description: "Stima pratica e realistica della durata dell'azione in minuti interi." },
-            energiaStimata: { type: "string", enum: ["bassa", "media", "alta"], description: "Livello di energia mentale richiesto dall'azione." }
-          },
-          required: ["testo", "priorita", "scadenzaOriginale", "dataISO", "time", "durataStimataMinuti", "energiaStimata"],
-          additionalProperties: false
-        }
-      },
-      scadenze: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            titolo: { type: "string", description: "Breve descrizione dell'impegno con scadenza" },
-            scadenzaOriginale: { type: "string", description: "Riferimento temporale originale" },
-            dataISO: { type: ["string", "null"], description: "Data calcolata in formato ISO yyyy-MM-dd" }
-          },
-          required: ["titolo", "scadenzaOriginale", "dataISO"],
-          additionalProperties: false
-        }
-      },
-      daPianificare: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            titolo: { type: "string", description: "Breve descrizione dell'attivita con riferimento temporale flessibile" },
-            riferimentoTemporale: { type: "string", description: "Riferimento temporale vago originale, es. 'questa settimana'" },
-            tipoFlessibilita: {
+            type: {
               type: "string",
-              enum: ["settimana_corrente", "settimana_prossima", "prossimi_giorni", "entro_mese", "flessibile"],
-              description: "Classificazione del livello di flessibilita temporale"
+              enum: ["event", "deadline", "task"],
+              description: "event = fixed date and fixed start time; deadline = due date without fixed execution time; task = flexible completion work."
             },
-            durataStimataMinuti: { type: "integer", description: "Stima pratica e realistica della durata dell'attivita in minuti interi." },
-            energiaStimata: { type: "string", enum: ["bassa", "media", "alta"], description: "Livello di energia mentale richiesto dall'attivita." }
+            title: { type: "string", description: "Clean concise activity title in the user's language." },
+            date: { type: ["string", "null"], description: "ISO date yyyy-MM-dd. Required for event/deadline, null when absent for flexible tasks." },
+            startTime: { type: ["string", "null"], description: "Fixed start time HH:mm for events only. Null for deadlines and flexible tasks." },
+            endTime: { type: ["string", "null"], description: "Fixed end time HH:mm when inferable for events. Null otherwise." },
+            indicativeTimeSlot: {
+              type: ["string", "null"],
+              description: "A broad slot such as morning, afternoon, evening, night or flexible when explicitly suggested but not fixed. Null if absent."
+            },
+            durationMinutes: { type: "integer", minimum: 0, description: "Estimated execution/event duration. Use 0 for deadlines because they are not schedule blocks." },
+            importanceScore: { type: "integer", minimum: 0, maximum: 100 },
+            urgencyScore: { type: "integer", minimum: 0, maximum: 100 },
+            energyRequiredScore: { type: "integer", minimum: 0, maximum: 100 },
+            flexibilityScore: { type: "integer", minimum: 0, maximum: 100, description: "0 means fixed/non-flexible, 100 means fully flexible." },
+            category: { type: "string", description: "Short category such as study, health, work, admin, home, finance, personal, errand, other." },
+            dependencies: {
+              type: "array",
+              items: { type: "string" },
+              description: "Only clearly inferable prerequisites. Empty array if none."
+            }
           },
-          required: ["titolo", "riferimentoTemporale", "tipoFlessibilita", "durataStimataMinuti", "energiaStimata"],
+          required: [
+            "type",
+            "title",
+            "date",
+            "startTime",
+            "endTime",
+            "indicativeTimeSlot",
+            "durationMinutes",
+            "importanceScore",
+            "urgencyScore",
+            "energyRequiredScore",
+            "flexibilityScore",
+            "category",
+            "dependencies"
+          ],
           additionalProperties: false
         }
       }
     },
-    required: ["azioni", "scadenze", "daPianificare"],
+    required: ["activities"],
     additionalProperties: false
   }
 };
@@ -292,10 +291,23 @@ const DAILY_PLANNER_ITEM_SCHEMA = {
     id: { type: "string" },
     title: { type: "string" },
     durationMinutes: { type: "integer", minimum: 0 },
-    type: { type: "string", enum: ["task", "habit", "calendar"] },
+    type: { type: "string", enum: ["task", "habit", "event", "calendar"] },
     why: { type: "string" }
   },
   required: ["id", "title", "durationMinutes", "type", "why"],
+  additionalProperties: false
+};
+
+const DAILY_PLANNER_DEFERRED_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    title: { type: "string" },
+    durationMinutes: { type: "integer", minimum: 0 },
+    type: { type: "string", enum: ["task", "habit", "event", "calendar"] },
+    whyDeferred: { type: "string" }
+  },
+  required: ["id", "title", "durationMinutes", "type", "whyDeferred"],
   additionalProperties: false
 };
 
@@ -338,7 +350,7 @@ const DAILY_PLANNER_SCHEMA = {
       },
       deferred: {
         type: "array",
-        items: DAILY_PLANNER_ITEM_SCHEMA
+        items: DAILY_PLANNER_DEFERRED_ITEM_SCHEMA
       }
     },
     required: ["summary", "energy", "sections", "deferred"],
@@ -348,76 +360,55 @@ const DAILY_PLANNER_SCHEMA = {
 
 // --- System prompt ---
 function buildInstructions(oggi) {
-  return `Sei un assistente che analizza testi in italiano ed estrae azioni (task/to-do) e scadenze.
+  return `Sei il parser di FloMind. Analizza il testo dell'utente e restituisci solo il JSON richiesto dallo schema.
 
 Data di oggi: ${oggi}
 
-REGOLE PER LE AZIONI:
-- Estrai ogni singola azione/task presente nel testo.
-- Ogni azione deve avere un testo pulito e conciso (verbo all'infinito + oggetto).
+OUTPUT:
+- Restituisci un oggetto con activities.
+- Ogni activity deve avere tutti i campi richiesti dallo schema.
+- Non restituire array legacy come azioni, scadenze o daPianificare.
+
+CLASSIFICAZIONE OBBLIGATORIA:
+1. event
+- Usa event solo quando l'input contiene una data fissa e un orario di inizio fisso.
+- Esempio: "dentista martedi alle 15" -> type "event", date risolta, startTime "15:00".
+- Gli eventi sono blocchi fissi: flexibilityScore basso, di solito 0-20.
+
+2. deadline
+- Usa deadline quando l'input contiene una data di scadenza o un giorno in cui qualcosa accade/va consegnato, ma non contiene un orario di esecuzione fisso.
+- Esempi: "esame di fisica giovedi", "consegna progetto venerdi", "bolletta entro lunedi".
+- Una deadline NON e un task da schedulare. Deve influenzare l'urgenza, non diventare un blocco casuale nel calendario.
+- Per deadline usa startTime null, endTime null, indicativeTimeSlot null e durationMinutes 0.
+
+3. task
+- Usa task quando e qualcosa da completare in modo flessibile.
+- Esempio: "studiare fisica" -> type "task", date null, startTime null.
+- Se l'utente indica solo una fascia vaga ("stasera", "domani pomeriggio", "questa settimana") senza orario fisso, resta task e usa indicativeTimeSlot quando applicabile; non inventare startTime.
+- I task flessibili hanno flexibilityScore medio/alto, in base a vincoli e urgenza.
+
+DATE E ORARI:
+- Risolvi "oggi", "domani", "dopodomani" e i giorni della settimana rispetto a Data di oggi.
+- Converti date esplicite in yyyy-MM-dd.
+- Formatta startTime/endTime in HH:mm con zero-padding.
+- Non inventare orari. Se non c'e un orario fisso, startTime deve essere null.
+- Per event, se endTime non e esplicito ma la durata e stimabile, calcola endTime da startTime + durationMinutes.
+- indicativeTimeSlot puo essere morning, afternoon, evening, night, flexible oppure null.
+
+STIME E SCORE:
+- durationMinutes e una stima realistica del tempo operativo per task/event. Usa 0 solo per deadline.
+- Stime orientative: micro-task amministrativi 5-10, chiamate 5-15, commissioni 15-45, documenti/revisioni 20-60, allenamento/pulizie/sito 30-90, studio intenso/scrittura/presentazioni 60-120.
+- importanceScore, urgencyScore, energyRequiredScore e flexibilityScore sono interi 0-100.
+- urgencyScore deve crescere con la vicinanza della date/deadline: oggi o entro 2 giorni alto, 3-7 giorni medio, oltre 7 giorni basso/medio, nessuna data basso salvo parole urgenti.
+- energyRequiredScore alto solo per studio intenso, scrittura, progettazione, creativita o deep work. Task pratici, telefonate, commissioni e burocrazia sono bassi o medi.
+- importanceScore riflette impatto/conseguenze, non solo urgenza.
+- category deve essere breve e stabile: study, health, work, admin, home, finance, personal, errand, other.
+- dependencies deve contenere solo prerequisiti chiaramente inferibili dal testo. Se non sono espliciti, usa [].
+
+PULIZIA DEL TITOLO:
 - Rimuovi introduzioni come "devo", "bisogna", "ricordati di".
-- Non lasciare frammenti sporchi o parole appese alla fine (articoli, preposizioni).
-
-REGOLE PER LE STIME:
-- Per ogni azione stima durataStimataMinuti come numero intero realistico e pratico.
-- Preferisci stime conservative e credibili: non gonfiare la durata se il task sembra piccolo o operativo.
-- Se il task e semplice o chiaramente eseguibile in poco tempo, usa una stima bassa invece di allargarla inutilmente.
-- Usa stime concrete basate sul tipo di attività. Esempi orientativi:
-  - pagare una fattura, inviare un documento, prenotare qualcosa: 5-10 minuti
-  - chiamare qualcuno: 5-15 minuti
-  - pagare una fattura o svolgere un micro-task amministrativo: 5-10 minuti
-  - rispondere a una singola email o messaggio importante: 5-15 minuti
-  - andare al supermercato o organizzare foto: 15-45 minuti
-  - leggere o rivedere un documento: 20-40 minuti
-  - aggiornare il CV, rispondere a molte email, sistemare il sito, allenarsi, pulizia casa: 30-90 minuti
-  - scrivere un documento importante: 60-120 minuti
-  - preparare slide o presentazioni: 60-120 minuti
-- Se l'attività è ampia, articolata o creativa, assegna una durata più alta.
-- Se il testo descrive un'attività generica ma non enorme, evita di superare 60 minuti senza una ragione chiara.
-- Usa durate più alte solo se il task implica lavoro profondo, produzione originale, studio intenso, progettazione o più fasi.
-- Non sommare automaticamente tempo di contesto, procrastinazione o pause: stima il tempo operativo reale del task.
-- Se il task è ambiguo, scegli una stima media-realistica invece di una stima massima.
-- energiaStimata deve essere:
-  - bassa: task semplice, veloce, meccanico, amministrativo o poco impegnativo. Usa bassa come default per task pratici e quotidiani. Esempi: pagare fattura, chiamare qualcuno, andare al supermercato, organizzare foto, piccoli task amministrativi.
-  - media: task che richiede attenzione, continuità o un minimo di sforzo mentale ma non deep work. Esempi: rivedere un documento, aggiornare il CV, rispondere a molte email, sistemare il sito, allenarsi, pulizia casa.
-  - alta: deve essere rara. Usala solo per task cognitivamente intensi, creativi, strategici o complessi, tipici di deep work. Esempi: preparare una presentazione importante, lavorare a un progetto complesso, scrivere un documento importante, studio intenso.
-- NON assegnare energia alta a task amministrativi, commissioni, telefonate, pulizia, spesa, riordino, email, aggiornamenti ordinari o revisioni leggere.
-- In caso di dubbio tra media e alta, scegli media.
-- In caso di dubbio tra bassa e media, scegli bassa per task pratici o meccanici e media solo se serve vera attenzione prolungata.
-- Non usare 0 minuti e non lasciare campi mancanti.
-
-REGOLE PER LE PRIORITÀ:
-- alta: la scadenza è entro 2 giorni da oggi (incluso oggi)
-- media: la scadenza è tra 3 e 7 giorni da oggi (inclusi)
-- bassa: la scadenza è oltre 7 giorni oppure non c'è nessuna scadenza
-
-REGOLE PER LE SCADENZE:
-- Estrai ogni coppia azione-scadenza trovata.
-- L'array scadenze deve contenere SOLO scadenze precise e risolvibili in un giorno preciso.
-- Se il testo dice "oggi", "domani" o "dopodomani", restituisci una dataISO precisa coerente con la data di oggi.
-- Se il testo dice un giorno preciso della settimana (lunedi, martedi, mercoledi, giovedi, venerdi, sabato, domenica), restituisci una dataISO precisa coerente con la data di oggi.
-- Se il testo contiene una data esplicita (es. "30 aprile"), convertila in formato ISO.
-- Se il riferimento temporale e troppo vago o non identifica un solo giorno preciso, NON inserirlo in scadenze.
-- I riferimenti vaghi devono andare nell'array daPianificare con: titolo, riferimentoTemporale e tipoFlessibilita.
-- Ogni elemento di daPianificare deve includere anche durataStimataMinuti ed energiaStimata.
-- Esempi di riferimenti vaghi che NON devono comparire in scadenze: "questa settimana", "settimana prossima", "tra qualche giorno", "quando ho tempo", "piu avanti", "entro il mese", "nei prossimi giorni".
-- Usa questi valori per tipoFlessibilita:
-  - settimana_corrente: per "questa settimana"
-  - settimana_prossima: per "settimana prossima"
-  - prossimi_giorni: per "tra qualche giorno" o "nei prossimi giorni"
-  - entro_mese: per "entro il mese"
-  - flessibile: per "quando ho tempo", "piu avanti" o riferimenti simili
-- Non trasformare riferimenti vaghi in "oggi" per default.
-- Non inventare scadenze: se un'azione non ha una scadenza, scadenzaOriginale e dataISO devono essere null nell'azione e l'azione non deve comparire nell'array scadenze.
-- Restituisci sempre tutti e tre gli array: azioni, scadenze, daPianificare. Se una sezione e vuota, restituisci un array vuoto.
-
-REGOLE PER GLI ORARI:
-- Estrai l'orario se presente nella frase e compilalo nel campo time dell'azione.
-- Formato obbligatorio di time: HH:mm (24 ore), con zero-padding.
-- Esempi: "alle 16" -> "16:00", "alle 9" -> "09:00", "alle 16:30" -> "16:30".
-- Frasi come "oggi pomeriggio alle 17" devono mantenere sia il riferimento temporale nella scadenza sia time = "17:00".
-- Se nella frase non è presente un orario esplicito, imposta time = null.
-- Non inventare orari: evita default automatici se non esplicitamente presenti nel testo.
+- Mantieni titoli brevi, naturali e senza parole appese.
+- Non trasformare una deadline in un task solo per poter assegnare durata.
 
 Rispondi SOLO con il JSON richiesto, senza testo aggiuntivo.`;
 }
@@ -432,49 +423,282 @@ function classifyFlexibleReference(reference) {
   return "flessibile";
 }
 
+function normalizeIsoDate(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+function normalizeClockTime(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const trimmed = String(value).trim();
+  const match = trimmed.match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = match[2] !== undefined ? Number(match[2]) : 0;
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function addMinutesToClockTime(startTime, durationMinutes) {
+  const normalizedStart = normalizeClockTime(startTime);
+  const duration = normalizeDuration(durationMinutes, 0);
+  if (!normalizedStart || duration <= 0) return null;
+
+  const [hours, minutes] = normalizedStart.split(":").map(Number);
+  const totalMinutes = (hours * 60 + minutes + duration) % (24 * 60);
+  const endHours = Math.floor(totalMinutes / 60);
+  const endMinutes = totalMinutes % 60;
+  return `${String(endHours).padStart(2, "0")}:${String(endMinutes).padStart(2, "0")}`;
+}
+
+function normalizeIndicativeTimeSlot(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+
+  if (["morning", "mattina"].includes(raw)) return "morning";
+  if (["afternoon", "pomeriggio"].includes(raw)) return "afternoon";
+  if (["evening", "sera", "serata"].includes(raw)) return "evening";
+  if (["night", "notte"].includes(raw)) return "night";
+  if (["flexible", "flessibile", "anytime", "quando ho tempo"].includes(raw)) return "flexible";
+  return null;
+}
+
+function normalizeActivityCategory(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return raw || "other";
+}
+
+function normalizeDependencies(value) {
+  if (!Array.isArray(value)) return [];
+
+  const dependencies = [];
+  for (let i = 0; i < value.length; i++) {
+    const dependency = String(value[i] || "").trim();
+    if (dependency) dependencies.push(dependency);
+  }
+  return dependencies;
+}
+
+function legacyPriorityFromScore(score) {
+  const normalized = clampInteger(score, 0, 100, 20);
+  if (normalized >= 67) return "alta";
+  if (normalized >= 34) return "media";
+  return "bassa";
+}
+
+function legacyEnergyFromScore(score) {
+  const normalized = clampInteger(score, 0, 100, 35);
+  if (normalized >= 67) return "alta";
+  if (normalized >= 34) return "media";
+  return "bassa";
+}
+
+function legacyScoreFromPriority(priority) {
+  const raw = String(priority || "").trim().toLowerCase();
+  if (raw === "alta" || raw === "high") return 85;
+  if (raw === "media" || raw === "medium") return 50;
+  return 20;
+}
+
+function legacyScoreFromEnergy(energy) {
+  const raw = String(energy || "").trim().toLowerCase();
+  if (raw === "alta" || raw === "high") return 85;
+  if (raw === "media" || raw === "medium") return 50;
+  return 25;
+}
+
+function normalizeActivityType(source, date, startTime) {
+  const rawType = getFirstString(source, ["type", "activityType", "tipo"]).toLowerCase();
+
+  if (date && startTime) return "event";
+  if (rawType === "deadline") return "deadline";
+  if (rawType === "task") return "task";
+  if (rawType === "event") return date ? "deadline" : "task";
+  if (date && !startTime) return "deadline";
+  return "task";
+}
+
+function normalizeActivity(source, index) {
+  const item = source && typeof source === "object" ? source : {};
+  const title = getFirstString(item, ["title", "titolo", "testo", "text", "name"]) || `Attivita ${index + 1}`;
+  const date = normalizeIsoDate(getFirstString(item, ["date", "dataISO", "dueDate", "deadline"]));
+  const startTime = normalizeClockTime(getFirstString(item, ["startTime", "time", "orario"]));
+  const type = normalizeActivityType(item, date, startTime);
+  const isDeadline = type === "deadline";
+  const durationMinutes = isDeadline
+    ? 0
+    : normalizeDuration(getFirstNumber(item, [
+      "durationMinutes",
+      "durataStimataMinuti",
+      "estimatedDurationMinutes",
+      "minutes",
+      "duration"
+    ]), type === "event" ? 30 : 30);
+  const explicitEndTime = normalizeClockTime(getFirstString(item, ["endTime", "fine", "end"]));
+  const endTime = type === "event"
+    ? explicitEndTime || addMinutesToClockTime(startTime, durationMinutes)
+    : null;
+  const urgencyFallback = legacyScoreFromPriority(getFirstString(item, ["priorita", "priority"]));
+  const energyFallback = legacyScoreFromEnergy(getFirstString(item, ["energiaStimata", "energy", "energyLevel"]));
+
+  return {
+    type,
+    title,
+    date,
+    startTime: type === "event" ? startTime : null,
+    endTime,
+    indicativeTimeSlot: type === "deadline" ? null : normalizeIndicativeTimeSlot(item.indicativeTimeSlot || item.preferredSlot || item.slotPreferito),
+    durationMinutes,
+    importanceScore: clampInteger(item.importanceScore, 0, 100, urgencyFallback),
+    urgencyScore: clampInteger(item.urgencyScore, 0, 100, urgencyFallback),
+    energyRequiredScore: clampInteger(item.energyRequiredScore, 0, 100, energyFallback),
+    flexibilityScore: clampInteger(item.flexibilityScore, 0, 100, type === "task" ? 80 : 10),
+    category: normalizeActivityCategory(item.category),
+    dependencies: normalizeDependencies(item.dependencies)
+  };
+}
+
+function buildActivitiesFromLegacyPayload(result) {
+  const activities = [];
+  const azioni = Array.isArray(result.azioni) ? result.azioni : [];
+  const scadenze = Array.isArray(result.scadenze) ? result.scadenze : [];
+  const daPianificare = Array.isArray(result.daPianificare) ? result.daPianificare : [];
+
+  for (let i = 0; i < azioni.length; i++) {
+    const action = azioni[i];
+    if (!action || typeof action !== "object") continue;
+
+    activities.push({
+      type: action.dataISO && action.time ? "event" : (action.dataISO ? "deadline" : "task"),
+      title: action.testo || action.titolo || "",
+      date: action.dataISO || null,
+      startTime: action.time || null,
+      durationMinutes: action.durataStimataMinuti,
+      urgencyScore: legacyScoreFromPriority(action.priorita),
+      importanceScore: legacyScoreFromPriority(action.priorita),
+      energyRequiredScore: legacyScoreFromEnergy(action.energiaStimata),
+      category: "other",
+      dependencies: []
+    });
+  }
+
+  for (let i = 0; i < scadenze.length; i++) {
+    const deadline = scadenze[i];
+    if (!deadline || typeof deadline !== "object") continue;
+
+    activities.push({
+      type: "deadline",
+      title: deadline.titolo || deadline.testo || "",
+      date: deadline.dataISO || deadline.dataRisolta || null,
+      durationMinutes: 0,
+      urgencyScore: 70,
+      importanceScore: 60,
+      energyRequiredScore: 0,
+      category: "other",
+      dependencies: []
+    });
+  }
+
+  for (let i = 0; i < daPianificare.length; i++) {
+    const flexible = daPianificare[i];
+    if (!flexible || typeof flexible !== "object") continue;
+
+    activities.push({
+      type: "task",
+      title: flexible.titolo || "",
+      date: null,
+      indicativeTimeSlot: "flexible",
+      durationMinutes: flexible.durataStimataMinuti,
+      urgencyScore: 20,
+      importanceScore: 40,
+      energyRequiredScore: legacyScoreFromEnergy(flexible.energiaStimata),
+      flexibilityScore: 90,
+      category: "other",
+      dependencies: []
+    });
+  }
+
+  return activities;
+}
+
+function dedupeActivities(activities) {
+  const result = [];
+  const seen = new Set();
+
+  for (let i = 0; i < activities.length; i++) {
+    const activity = activities[i];
+    if (!activity || !activity.title) continue;
+
+    const key = [
+      activity.type,
+      activity.title.toLowerCase(),
+      activity.date || "",
+      activity.startTime || ""
+    ].join("|");
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(activity);
+  }
+
+  return result;
+}
+
 function normalizeAnalysisPayload(parsed) {
   const result = parsed && typeof parsed === "object" ? parsed : {};
-  const azioni = Array.isArray(result.azioni) ? result.azioni : [];
-  const scadenzeSource = Array.isArray(result.scadenze) ? result.scadenze : [];
-  const daPianificare = Array.isArray(result.daPianificare) ? result.daPianificare.slice() : [];
+  const activitySource = Array.isArray(result.activities)
+    ? result.activities
+    : buildActivitiesFromLegacyPayload(result);
+  const activities = dedupeActivities(activitySource.map((activity, index) => normalizeActivity(activity, index)));
+  const azioni = [];
   const scadenze = [];
 
-  for (let i = 0; i < scadenzeSource.length; i++) {
-    const item = scadenzeSource[i];
-    if (!item || typeof item !== "object") continue;
+  for (let i = 0; i < activities.length; i++) {
+    const activity = activities[i];
 
-    if (item.dataISO) {
-      scadenze.push(item);
+    if (activity.type === "deadline") {
+      if (activity.date) {
+        scadenze.push({
+          titolo: activity.title,
+          scadenzaOriginale: activity.date,
+          dataISO: activity.date
+        });
+      }
       continue;
     }
 
-    const titolo = item.titolo || "";
-    const riferimentoTemporale = item.scadenzaOriginale || "";
-    let matchedAction = null;
-
-    for (let j = 0; j < azioni.length; j++) {
-      if (azioni[j] && azioni[j].testo === titolo) {
-        matchedAction = azioni[j];
-        break;
-      }
-    }
-
-    daPianificare.push({
-      titolo,
-      riferimentoTemporale,
-      tipoFlessibilita: classifyFlexibleReference(riferimentoTemporale),
-      durataStimataMinuti: matchedAction && Number.isInteger(matchedAction.durataStimataMinuti)
-        ? matchedAction.durataStimataMinuti
-        : 30,
-      energiaStimata: matchedAction && typeof matchedAction.energiaStimata === "string"
-        ? matchedAction.energiaStimata
-        : "media",
+    azioni.push({
+      testo: activity.title,
+      priorita: legacyPriorityFromScore(Math.max(activity.urgencyScore, activity.importanceScore)),
+      scadenzaOriginale: activity.date,
+      dataISO: activity.date,
+      time: activity.startTime,
+      durataStimataMinuti: activity.durationMinutes,
+      energiaStimata: legacyEnergyFromScore(activity.energyRequiredScore),
+      activityType: activity.type,
+      startTime: activity.startTime,
+      endTime: activity.endTime,
+      indicativeTimeSlot: activity.indicativeTimeSlot,
+      importanceScore: activity.importanceScore,
+      urgencyScore: activity.urgencyScore,
+      energyRequiredScore: activity.energyRequiredScore,
+      flexibilityScore: activity.flexibilityScore,
+      category: activity.category,
+      dependencies: activity.dependencies
     });
   }
+
+  const daPianificare = Array.isArray(result.daPianificare) ? result.daPianificare.slice() : [];
 
   result.azioni = azioni;
   result.scadenze = scadenze;
   result.daPianificare = daPianificare;
+  result.activities = activities;
   return result;
 }
 
@@ -573,6 +797,26 @@ function normalizePlannerEnergy(value) {
   return "medium";
 }
 
+function normalizePlannerActivityTypeValue(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (["task", "habit", "event", "deadline", "calendar"].includes(raw)) return raw;
+  return "task";
+}
+
+function scoreFromPlannerPriority(value) {
+  const priority = normalizePlannerPriority(value);
+  if (priority === "high") return 85;
+  if (priority === "medium") return 50;
+  return 20;
+}
+
+function scoreFromPlannerEnergy(value) {
+  const energy = normalizePlannerEnergy(value);
+  if (energy === "high") return 85;
+  if (energy === "medium") return 50;
+  return 25;
+}
+
 function normalizePreference(value, allowed, fallback) {
   const raw = String(value || "").trim().toLowerCase();
   return allowed.includes(raw) ? raw : fallback;
@@ -611,9 +855,12 @@ function getCalendarEventDurationMinutes(event) {
 
 function normalizePlannerTask(task, index) {
   const title = getFirstString(task, ["title", "testo", "text", "name", "summary", "label"]);
+  const priorityScore = scoreFromPlannerPriority(getFirstString(task, ["importance", "priorita", "priority"]));
+  const energyScore = scoreFromPlannerEnergy(getFirstString(task, ["energy", "energiaStimata", "energyLevel"]));
 
   return {
     id: getFirstString(task, ["id", "taskId", "uid"]) || `task:${index + 1}`,
+    type: "task",
     title: title || `Task ${index + 1}`,
     durationMinutes: normalizeDuration(getFirstNumber(task, [
       "durationMinutes",
@@ -624,21 +871,33 @@ function normalizePlannerTask(task, index) {
     ]), 30),
     importance: normalizePlannerPriority(getFirstString(task, ["importance", "priorita", "priority"])),
     energy: normalizePlannerEnergy(getFirstString(task, ["energy", "energiaStimata", "energyLevel"])),
+    importanceScore: clampInteger(task && task.importanceScore, 0, 100, priorityScore),
+    urgencyScore: clampInteger(task && task.urgencyScore, 0, 100, priorityScore),
+    energyRequiredScore: clampInteger(task && task.energyRequiredScore, 0, 100, energyScore),
+    flexibilityScore: clampInteger(task && task.flexibilityScore, 0, 100, 80),
+    category: getFirstString(task, ["category", "categoria"]) || "other",
+    dependencies: Array.isArray(task && task.dependencies) ? task.dependencies.map(String).filter(Boolean) : [],
     dueDate: getFirstString(task, ["dueDate", "dataISO", "date", "deadline"]),
     dueLabel: getFirstString(task, ["dueLabel", "scadenzaOriginale"]),
     time: getFirstString(task, ["time", "startTime", "orario"]),
+    endTime: getFirstString(task, ["endTime", "fine"]),
     completed: getFirstBoolean(task, ["completed", "completato"]) === true,
     preferredSlot: getFirstString(task, ["preferredSlot", "slotPreferito"]),
-    notes: getFirstString(task, ["notes", "description", "descrizione"])
+    notes: getFirstString(task, ["notes", "description", "descrizione"]),
+    relatedDeadlineTitle: getFirstString(task, ["relatedDeadlineTitle"]),
+    relatedDeadlineISO: getFirstString(task, ["relatedDeadlineISO"])
   };
 }
 
 function normalizePlannerHabit(habit, index) {
   const title = getFirstString(habit, ["title", "testo", "text", "name", "summary", "label"]);
   const fixedSchedule = getFirstBoolean(habit, ["fixedSchedule", "fixed", "hasFixedTime"]) === true;
+  const priorityScore = scoreFromPlannerPriority(getFirstString(habit, ["importance", "priorita", "priority"]));
+  const energyScore = scoreFromPlannerEnergy(getFirstString(habit, ["energy", "energiaStimata", "energyLevel"]));
 
   return {
     id: getFirstString(habit, ["id", "habitId", "uid"]) || `habit:${index + 1}`,
+    type: "habit",
     title: title || `Habit ${index + 1}`,
     durationMinutes: normalizeDuration(getFirstNumber(habit, [
       "durationMinutes",
@@ -650,8 +909,15 @@ function normalizePlannerHabit(habit, index) {
     ]), 20),
     importance: normalizePlannerPriority(getFirstString(habit, ["importance", "priorita", "priority"])),
     energy: normalizePlannerEnergy(getFirstString(habit, ["energy", "energiaStimata", "energyLevel"])),
+    importanceScore: clampInteger(habit && habit.importanceScore, 0, 100, priorityScore),
+    urgencyScore: clampInteger(habit && habit.urgencyScore, 0, 100, priorityScore),
+    energyRequiredScore: clampInteger(habit && habit.energyRequiredScore, 0, 100, energyScore),
+    flexibilityScore: clampInteger(habit && habit.flexibilityScore, 0, 100, fixedSchedule ? 0 : 65),
+    category: getFirstString(habit, ["category", "categoria"]) || "habit",
+    dependencies: Array.isArray(habit && habit.dependencies) ? habit.dependencies.map(String).filter(Boolean) : [],
     frequency: getFirstString(habit, ["frequency", "frequenza"]),
     completed: getFirstBoolean(habit, ["completed", "completedToday", "completato"]) === true,
+    completedToday: getFirstBoolean(habit, ["completedToday", "completed", "completato"]) === true,
     fixedSchedule,
     time: getFirstString(habit, ["time", "fixedStartTime", "startTime", "orario"]),
     preferredSlot: getFirstString(habit, ["preferredSlot", "slotPreferito"])
@@ -670,6 +936,7 @@ function normalizePlannerCalendarEvent(event, index) {
 
   return {
     id: getFirstString(event, ["id", "eventId", "uid"]) || `calendar:${index + 1}`,
+    type: "calendar",
     title: title || `Calendar event ${index + 1}`,
     start,
     end,
@@ -677,6 +944,44 @@ function normalizePlannerCalendarEvent(event, index) {
     allDay: Boolean(getNestedString(event, ["start", "date"]) && !getNestedString(event, ["start", "dateTime"])),
     busy: transparency.toLowerCase() !== "transparent" && transparency.toLowerCase() !== "free",
     location: getFirstString(event, ["location", "luogo"])
+  };
+}
+
+function normalizePlannerActivity(activity, index) {
+  const source = activity && typeof activity === "object" ? activity : {};
+  const title = getFirstString(source, ["title", "testo", "text", "name", "summary", "label"]) || `Activity ${index + 1}`;
+  const type = normalizePlannerActivityTypeValue(getFirstString(source, ["type", "activityType", "tipo"]));
+  const priorityScore = scoreFromPlannerPriority(getFirstString(source, ["importance", "priorita", "priority"]));
+  const energyScore = scoreFromPlannerEnergy(getFirstString(source, ["energy", "energiaStimata", "energyLevel"]));
+  const date = getFirstString(source, ["date", "dataISO", "dueDate", "deadline"]);
+  const startTime = getFirstString(source, ["startTime", "time", "orario"]);
+  const normalizedType = type === "task" && date && startTime ? "event" : type;
+
+  return {
+    id: getFirstString(source, ["id", "activityId", "taskId", "habitId", "uid"]) || `activity:${index + 1}`,
+    type: normalizedType,
+    title,
+    date: date || null,
+    startTime: startTime || null,
+    endTime: getFirstString(source, ["endTime", "fine"]) || null,
+    indicativeTimeSlot: getFirstString(source, ["indicativeTimeSlot", "preferredSlot", "slotPreferito"]) || null,
+    durationMinutes: normalizedType === "deadline" ? 0 : normalizeDuration(getFirstNumber(source, [
+      "durationMinutes",
+      "durataStimataMinuti",
+      "estimatedDurationMinutes",
+      "minutes",
+      "duration"
+    ]), normalizedType === "habit" ? 20 : 30),
+    importanceScore: clampInteger(source.importanceScore, 0, 100, priorityScore),
+    urgencyScore: clampInteger(source.urgencyScore, 0, 100, priorityScore),
+    energyRequiredScore: clampInteger(source.energyRequiredScore, 0, 100, energyScore),
+    flexibilityScore: clampInteger(source.flexibilityScore, 0, 100, normalizedType === "task" ? 80 : 10),
+    category: getFirstString(source, ["category", "categoria"]) || "other",
+    dependencies: Array.isArray(source.dependencies) ? source.dependencies.map(String).filter(Boolean) : [],
+    completed: getFirstBoolean(source, ["completed", "completato"]) === true,
+    completedToday: getFirstBoolean(source, ["completedToday", "completed", "completato"]) === true,
+    relatedDeadlineTitle: getFirstString(source, ["relatedDeadlineTitle"]) || null,
+    relatedDeadlineISO: getFirstString(source, ["relatedDeadlineISO"]) || null
   };
 }
 
@@ -692,6 +997,7 @@ function buildDailyPlannerInput(body) {
       availableTime: normalizePreference(preferences.availableTime, ["short", "medium", "full"], "medium"),
       mainFocus: normalizePreference(preferences.mainFocus, ["work", "health", "study", "personal", "balanced"], "balanced")
     },
+    activities: (Array.isArray(payload.activities) ? payload.activities : []).map(normalizePlannerActivity),
     tasks: (Array.isArray(payload.tasks) ? payload.tasks : []).map(normalizePlannerTask),
     habits: (Array.isArray(payload.habits) ? payload.habits : []).map(normalizePlannerHabit),
     calendarEvents: (Array.isArray(payload.calendarEvents) ? payload.calendarEvents : []).map(normalizePlannerCalendarEvent)
@@ -704,30 +1010,48 @@ function buildDailyPlannerInstructions(locale) {
 Return only the strict JSON object requested by the schema. Do not include markdown or prose outside JSON.
 
 User language:
-- Write summary.label, summary.reason and every item.why in the user's language inferred from locale "${locale}".
+- Write summary.label, summary.reason, every scheduled item.why and every deferred item.whyDeferred in the user's language inferred from locale "${locale}".
 - If locale starts with "it", use natural Italian.
 
+Input model:
+- Prefer input.activities when present. Each activity has type: event, deadline, task, habit, or calendar.
+- tasks, habits and calendarEvents are legacy-compatible inputs. Treat them with the same rules.
+
+Hard rules:
+- Never schedule completed activities.
+- Never schedule habits already completed today.
+- Never schedule future activities unless their date is today.
+- Never schedule deadlines as normal tasks. Do not output type "deadline". A deadline only increases urgency of clearly related tasks.
+- Events are fixed blocks and cannot move.
+- Busy calendar events are fixed occupied blocks and cannot move.
+- Do not overlap tasks with events or calendar blocks.
+
 Planning rules:
-- Calendar events are fixed occupied blocks. Keep every busy calendar event in the correct section based on start/end time and do not place flexible tasks in a way that overloads those sections.
-- Calendar events with explicit start/end times define occupied capacity. Morning is before 12:00, afternoon is 12:00-17:59, evening is 18:00 or later.
-- If a calendar event spans sections, place it in the section where it starts and account for the occupied time in later sections.
-- Explicit-time tasks or fixed-schedule habits should stay in their natural section unless they conflict with calendar events; defer them if they cannot fit.
-- Do not overload the day. Prefer a realistic plan with margin over a packed list.
-- Respect preferences.availableTime: short means only essentials, medium means a balanced plan, full allows more work but still preserves breaks.
+- Output sections.morning, sections.afternoon, sections.evening, and deferred.
+- Morning is before 12:00, afternoon is 12:00-17:59, evening is 18:00 or later.
+- Calendar events with explicit start/end times define occupied capacity. If a calendar event spans sections, place it where it starts and keep later capacity realistic.
+- Fixed events, fixed-time tasks and fixed-schedule habits stay in their natural section; defer movable work that conflicts with them.
+- High urgency + high importance comes first.
+- High energy tasks should be earlier in the day when preferences.energy allows it.
+- Low energy tasks fit better later.
+- Flexible tasks can move.
+- Deadlines increase urgency of related tasks, especially when due today or very soon.
 - Respect preferences.energy: tired means lighter load and fewer high-energy items, normal means balanced, energized means high-energy work can be planned earlier.
+- Respect preferences.availableTime: short means about 1-2h, medium about 2-4h, full allows a fuller day with margin.
 - Respect preferences.mainFocus by favoring matching tasks or habits when choosing among similar items.
-- Prefer important, urgent, or high-energy tasks earlier in the day when they fit.
 - Habits should support the day, not crowd out urgent or important tasks.
-- Put useful but non-essential items in deferred.
-- Include calendar items in sections with type "calendar"; include unscheduled tasks or habits in deferred.
+- Put useful but non-essential or conflicting items in deferred.
+- Include fixed calendar items in sections with type "calendar".
 - Use the exact item id from the input. Never invent an id when an input id exists.
+- Scheduled items must explain why they were chosen in why.
+- Deferred items must explain why they were deferred in whyDeferred.
 - durationMinutes must be realistic and non-negative.
 - summary.score is 0-100 and reflects how balanced and achievable the plan is.`;
 }
 
 function normalizePlanItem(item, fallbackType) {
   const source = item && typeof item === "object" ? item : {};
-  const type = ["task", "habit", "calendar"].includes(source.type) ? source.type : fallbackType;
+  const type = ["task", "habit", "event", "calendar"].includes(source.type) ? source.type : fallbackType;
 
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id.trim() : crypto.randomUUID(),
@@ -735,6 +1059,21 @@ function normalizePlanItem(item, fallbackType) {
     durationMinutes: normalizeDuration(source.durationMinutes, 0),
     type: type || "task",
     why: typeof source.why === "string" && source.why.trim() ? source.why.trim() : "Inserito nel piano della giornata."
+  };
+}
+
+function normalizeDeferredPlanItem(item, fallbackType) {
+  const source = item && typeof item === "object" ? item : {};
+  const type = ["task", "habit", "event", "calendar"].includes(source.type) ? source.type : fallbackType;
+
+  return {
+    id: typeof source.id === "string" && source.id.trim() ? source.id.trim() : crypto.randomUUID(),
+    title: typeof source.title === "string" && source.title.trim() ? source.title.trim() : "Elemento rimandato",
+    durationMinutes: normalizeDuration(source.durationMinutes, 0),
+    type: type || "task",
+    whyDeferred: typeof source.whyDeferred === "string" && source.whyDeferred.trim()
+      ? source.whyDeferred.trim()
+      : (typeof source.why === "string" && source.why.trim() ? source.why.trim() : "Rimandato per rendere il piano sostenibile.")
   };
 }
 
@@ -760,7 +1099,7 @@ function normalizeDailyPlannerPayload(parsed) {
       afternoon: (Array.isArray(sections.afternoon) ? sections.afternoon : []).map((item) => normalizePlanItem(item, "task")),
       evening: (Array.isArray(sections.evening) ? sections.evening : []).map((item) => normalizePlanItem(item, "task"))
     },
-    deferred: (Array.isArray(source.deferred) ? source.deferred : []).map((item) => normalizePlanItem(item, "task"))
+    deferred: (Array.isArray(source.deferred) ? source.deferred : []).map((item) => normalizeDeferredPlanItem(item, "task"))
   };
 }
 
@@ -773,7 +1112,8 @@ function hasInvalidPlannerArrays(body) {
     return true;
   }
 
-  return (body.tasks !== undefined && !Array.isArray(body.tasks)) ||
+  return (body.activities !== undefined && !Array.isArray(body.activities)) ||
+    (body.tasks !== undefined && !Array.isArray(body.tasks)) ||
     (body.habits !== undefined && !Array.isArray(body.habits)) ||
     (body.calendarEvents !== undefined && !Array.isArray(body.calendarEvents));
 }
@@ -781,7 +1121,11 @@ function hasInvalidPlannerArrays(body) {
 // --- Route POST /plan-day ---
 app.post("/plan-day", async (req, res) => {
   if (hasInvalidPlannerArrays(req.body)) {
-    return res.status(400).json({ error: "Body non valido: tasks, habits e calendarEvents devono essere array." });
+    return res.status(400).json({ error: "Body non valido: activities, tasks, habits e calendarEvents devono essere array." });
+  }
+
+  if (!req.currentUser || req.currentUser.plan !== "pro") {
+    return res.status(403).json({ error: "Il planner AI e' disponibile solo con il piano Pro." });
   }
 
   const plannerInput = buildDailyPlannerInput(req.body || {});
@@ -832,7 +1176,12 @@ app.post("/api/analyze", async (req, res) => {
     const output = response.output_text;
     const parsed = normalizeAnalysisPayload(JSON.parse(output));
 
-    // Aggiunge id univoco a ogni azione e scadenza
+    // Aggiunge id univoco a ogni attivita, azione e scadenza
+    if (Array.isArray(parsed.activities)) {
+      for (let i = 0; i < parsed.activities.length; i++) {
+        parsed.activities[i].id = crypto.randomUUID();
+      }
+    }
     if (Array.isArray(parsed.azioni)) {
       for (let i = 0; i < parsed.azioni.length; i++) {
         parsed.azioni[i].id = crypto.randomUUID();

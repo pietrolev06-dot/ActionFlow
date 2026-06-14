@@ -8700,13 +8700,22 @@ body[data-theme="dark"]:has(.daily-plan-page-shell) {
 }
 
 .daily-plan-page-shell .piano-task-duration,
-.daily-plan-page-shell .piano-task-meta-separator {
+.daily-plan-page-shell .piano-task-meta-separator,
+.daily-plan-page-shell .piano-task-meta .badge-time {
   display: inline;
   color: var(--muted);
 }
 
 .daily-plan-page-shell .piano-task-meta-separator {
   opacity: 0.62;
+}
+
+.daily-plan-page-shell .piano-task-why,
+.piano-task-why {
+  flex-basis: 100%;
+  color: color-mix(in srgb, var(--text) 72%, var(--muted));
+  font-weight: 650;
+  line-height: 1.28;
 }
 
 .daily-plan-page-shell .piano-habit-flexible {

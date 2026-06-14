@@ -31,6 +31,7 @@ var DAILY_PLAN_STORAGE_KEY = "actionflow_daily_plan";
 var DAILY_PLAN_DEFAULT_DURATION = 30;
 var DAILY_PLAN_MAX_TASKS = 5;
 var DAILY_PLAN_MAX_SLOT_MINUTES = 180;
+var DAILY_PLAN_MAX_EVENING_MINUTES = 150;
 var DAILY_PLAN_DEBUG = true;
 var ANALYSIS_PREVIEW_MAX_ITEMS = 6;
 var pendingAnalysisResult = null;
@@ -93,6 +94,19 @@ function mergeTaskRecords(existingTask, incomingTask) {
     merged.durataStimataMinuti = normalizzaDurataStimata(existing.durataStimataMinuti);
   }
   merged.energiaStimata = normalizzaEnergiaStimata(incoming.energiaStimata) || normalizzaEnergiaStimata(existing.energiaStimata);
+  merged.type = incoming.type || existing.type || incoming.activityType || existing.activityType || "task";
+  merged.activityType = merged.type;
+  merged.startTime = incoming.startTime || incoming.time || existing.startTime || existing.time || null;
+  merged.endTime = incoming.endTime || existing.endTime || null;
+  merged.indicativeTimeSlot = incoming.indicativeTimeSlot || existing.indicativeTimeSlot || null;
+  merged.importanceScore = scoreAttivitaParser(incoming.importanceScore, scoreAttivitaParser(existing.importanceScore, priorityToActivityScore(merged.priorita)));
+  merged.urgencyScore = scoreAttivitaParser(incoming.urgencyScore, scoreAttivitaParser(existing.urgencyScore, priorityToActivityScore(merged.priorita)));
+  merged.energyRequiredScore = scoreAttivitaParser(incoming.energyRequiredScore, scoreAttivitaParser(existing.energyRequiredScore, energyToActivityScore(merged.energiaStimata)));
+  merged.flexibilityScore = scoreAttivitaParser(incoming.flexibilityScore, scoreAttivitaParser(existing.flexibilityScore, merged.type === "task" ? 80 : 10));
+  merged.category = incoming.category || existing.category || "other";
+  merged.dependencies = Array.isArray(incoming.dependencies) && incoming.dependencies.length
+    ? incoming.dependencies.slice()
+    : (Array.isArray(existing.dependencies) ? existing.dependencies.slice() : []);
 
   if (existingTask && existingTask.aggiunta) merged.aggiunta = existingTask.aggiunta;
   if (incomingTask && incomingTask.aggiunta && !merged.aggiunta) merged.aggiunta = incomingTask.aggiunta;
@@ -257,8 +271,10 @@ function countDailyPlanTasks(plan) {
   return {
     mattina: sezioni.mattina.length,
     pomeriggio: sezioni.pomeriggio.length,
-    restaDaFareOggi: sezioni.restaDaFareOggi.length,
-    seAvanzaTempo: sezioni.seAvanzaTempo.length
+    sera: sezioni.sera.length,
+    restaDaFareOggi: sezioni.sera.length,
+    daRimandare: sezioni.daRimandare.length,
+    seAvanzaTempo: sezioni.daRimandare.length
   };
 }
 
@@ -273,19 +289,24 @@ function computeDailyPlanTotals(plan) {
   var sezioni = getDailyPlanSections(plan);
   var mattinaAttive = getIncompletePlanTasks(sezioni.mattina);
   var pomeriggioAttive = getIncompletePlanTasks(sezioni.pomeriggio);
-  var restaAttive = getIncompletePlanTasks(sezioni.restaDaFareOggi);
-  var extraAttive = getIncompletePlanTasks(sezioni.seAvanzaTempo);
+  var seraAttive = getIncompletePlanTasks(sezioni.sera);
+  var rimandateAttive = getIncompletePlanTasks(sezioni.daRimandare);
   var minutiMattina = getPlanSlotMinutes(mattinaAttive);
   var minutiPomeriggio = getPlanSlotMinutes(pomeriggioAttive);
+  var minutiSera = getPlanSlotMinutes(seraAttive);
 
   return {
-    taskConsiderati: mattinaAttive.length + pomeriggioAttive.length + restaAttive.length + extraAttive.length,
+    taskConsiderati: mattinaAttive.length + pomeriggioAttive.length + seraAttive.length + rimandateAttive.length,
     minutiMattina: minutiMattina,
     minutiPomeriggio: minutiPomeriggio,
-    minutiDaFareOggi: minutiMattina + minutiPomeriggio,
+    minutiSera: minutiSera,
+    minutiDaFareOggi: minutiMattina + minutiPomeriggio + minutiSera,
     taskMattina: mattinaAttive.length,
     taskPomeriggio: pomeriggioAttive.length,
-    taskRestaDaFareOggi: restaAttive.length,
+    taskSera: seraAttive.length,
+    taskRestaDaFareOggi: seraAttive.length,
+    taskDaRimandare: rimandateAttive.length,
+    taskSeAvanzaTempo: rimandateAttive.length,
     taskFuturiMonitorati: plan && plan.totali && typeof plan.totali.taskFuturiMonitorati === "number" ? plan.totali.taskFuturiMonitorati : 0
   };
 }
@@ -300,12 +321,14 @@ function normalizeDailyPlan(plan) {
     data: plan.data || formatISO(inizioOggiLocale()),
     mattina: sezioni.mattina,
     pomeriggio: sezioni.pomeriggio,
-    restaDaFareOggi: sezioni.restaDaFareOggi,
-    seAvanzaTempo: sezioni.seAvanzaTempo,
-    daFareOggi: sezioni.mattina.concat(sezioni.pomeriggio).concat(sezioni.restaDaFareOggi),
+    sera: sezioni.sera,
+    restaDaFareOggi: sezioni.sera,
+    daRimandare: sezioni.daRimandare,
+    seAvanzaTempo: sezioni.daRimandare,
+    daFareOggi: sezioni.mattina.concat(sezioni.pomeriggio).concat(sezioni.sera),
     meta: plan.meta && typeof plan.meta === "object" ? {
       taskSignature: plan.meta.taskSignature || "",
-      sourceTaskCount: typeof plan.meta.sourceTaskCount === "number" ? plan.meta.sourceTaskCount : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.restaDaFareOggi.length + sezioni.seAvanzaTempo.length
+      sourceTaskCount: typeof plan.meta.sourceTaskCount === "number" ? plan.meta.sourceTaskCount : sezioni.mattina.length + sezioni.pomeriggio.length + sezioni.sera.length + sezioni.daRimandare.length
     } : null,
     totali: totali
   };
@@ -925,7 +948,7 @@ function isTaskCompletedForPlanner(task, completate) {
 
 function getStoredScadenzaMap() {
   var mappa = {};
-  var scadenze = leggiArchivioScadenze();
+  var scadenze = getStoredScadenzeForPlanning();
 
   for (var i = 0; i < scadenze.length; i++) {
     if (scadenze[i] && scadenze[i].testo) {
@@ -933,36 +956,84 @@ function getStoredScadenzaMap() {
     }
   }
 
-  try {
-    var correnti = dedupeScadenze(window.ActionFlowAuth.readOwnedArray("actionflow_scadenze"));
-    if (Array.isArray(correnti)) {
-      for (var j = 0; j < correnti.length; j++) {
-        if (correnti[j] && correnti[j].testo) {
-          mappa[normalizeText(correnti[j].testo)] = correnti[j];
-        }
-      }
-    }
-  } catch (e) {}
-
   return mappa;
 }
 
-function normalizzaTaskPerPiano(task, completate, scadenzeMap) {
+function getStoredScadenzeForPlanning() {
+  var scadenze = [];
+
+  try {
+    scadenze = scadenze.concat(leggiArchivioScadenze());
+  } catch (e) {}
+
+  try {
+    var correnti = dedupeScadenze(window.ActionFlowAuth.readOwnedArray("actionflow_scadenze"));
+    if (Array.isArray(correnti)) {
+      scadenze = scadenze.concat(correnti);
+    }
+  } catch (e) {}
+
+  return dedupeScadenze(scadenze);
+}
+
+function findRelatedDeadlineForTask(taskText, scadenze) {
+  var taskStub = { testo: taskText || "" };
+  var source = Array.isArray(scadenze) ? scadenze : [];
+  var best = null;
+  var bestDays = null;
+
+  for (var i = 0; i < source.length; i++) {
+    var deadline = source[i];
+    if (!deadline || !deadline.testo) continue;
+
+    var dataISO = deadline.dataRisolta || deadline.dataISO || null;
+    var days = getTaskDaysFromToday(dataISO);
+    if (days === null) continue;
+    if (!areLinkedTasks(taskStub, { testo: deadline.testo })) continue;
+
+    if (best === null || days < bestDays) {
+      best = deadline;
+      bestDays = days;
+    }
+  }
+
+  return best;
+}
+
+function normalizzaTaskPerPiano(task, completate, scadenzeMap, scadenzeList) {
   var azione = normalizzaAzioneSalvata(task);
   var fallbackScadenza = scadenzeMap[normalizeText(azione.testo)] || null;
+  var relatedDeadline = findRelatedDeadlineForTask(azione.testo, scadenzeList);
   var durata = normalizzaDurataStimata(azione.durataStimataMinuti);
   var energia = normalizzaEnergiaStimata(azione.energiaStimata);
   var orario = normalizzaOrario(azione.time);
+  var type = normalizePlannerActivityType(azione.type || azione.activityType || (task && task.isHabit ? "habit" : "task"));
 
   return {
     id: task && task.id ? task.id : generaIdAzione(azione.testo || ""),
+    title: azione.testo,
     testo: azione.testo,
+    type: type,
+    activityType: type,
     priorita: azione.priorita || "media",
     dataISO: azione.dataISO || (fallbackScadenza ? fallbackScadenza.dataRisolta || null : null),
     scadenzaOriginale: azione.scadenzaOriginale || (fallbackScadenza ? fallbackScadenza.data || null : null),
     time: orario,
+    startTime: normalizzaOrario(azione.startTime || orario),
+    endTime: normalizzaOrario(azione.endTime),
+    indicativeTimeSlot: azione.indicativeTimeSlot || null,
     durataStimataMinuti: durata !== null ? durata : DAILY_PLAN_DEFAULT_DURATION,
+    duration: durata !== null ? durata : DAILY_PLAN_DEFAULT_DURATION,
+    durationMinutes: durata !== null ? durata : DAILY_PLAN_DEFAULT_DURATION,
     energiaStimata: energia || "media",
+    importanceScore: scoreAttivitaParser(azione.importanceScore, priorityToActivityScore(azione.priorita || "media")),
+    urgencyScore: scoreAttivitaParser(azione.urgencyScore, priorityToActivityScore(azione.priorita || "media")),
+    energyRequiredScore: scoreAttivitaParser(azione.energyRequiredScore, energyToActivityScore(energia || "media")),
+    flexibilityScore: scoreAttivitaParser(azione.flexibilityScore, type === "task" ? 80 : 10),
+    category: azione.category || "other",
+    dependencies: Array.isArray(azione.dependencies) ? azione.dependencies.slice() : [],
+    relatedDeadlineTitle: relatedDeadline ? relatedDeadline.testo : null,
+    relatedDeadlineISO: relatedDeadline ? relatedDeadline.dataRisolta || relatedDeadline.dataISO || null : null,
     completato: isTaskCompletedForPlanner(task || azione, completate),
     prioritaFallbackUsata: !azione.priorita,
     durataFallbackUsata: durata === null,
@@ -972,6 +1043,7 @@ function normalizzaTaskPerPiano(task, completate, scadenzeMap) {
 
 function getSavedTasksForPlanning() {
   var completate = leggiAzioniCompletate();
+  var scadenzeList = getStoredScadenzeForPlanning();
   var scadenzeMap = getStoredScadenzaMap();
   var tasks = [];
 
@@ -987,7 +1059,7 @@ function getSavedTasksForPlanning() {
     }
 
     for (var i = 0; i < sorgente.length; i++) {
-      var task = normalizzaTaskPerPiano(sorgente[i], completate, scadenzeMap);
+      var task = normalizzaTaskPerPiano(sorgente[i], completate, scadenzeMap, scadenzeList);
       if (task.testo) {
         tasks.push(task);
       }
@@ -1056,12 +1128,12 @@ function getTodayHabitsForPlanning() {
       var actualDueToday = typeof window.ActionFlowHabits.isHabitActiveOnDate === "function"
         ? window.ActionFlowHabits.isHabitActiveOnDate(habit, today)
         : true;
-      var flexibleOccurrence = actualDueToday !== true;
-      if (flexibleOccurrence && habit.frequency !== "weekly") {
+      var flexibleOccurrence = false;
+      if (actualDueToday !== true) {
         continue;
       }
       var rawFixedTime = habit.fixedSchedule ? normalizzaOrario(habit.fixedStartTime) : null;
-      var fixedTime = flexibleOccurrence ? null : rawFixedTime;
+      var fixedTime = rawFixedTime;
       var duration = normalizzaDurataStimata(
         habit.fixedSchedule && habit.fixedDurationMinutes
           ? habit.fixedDurationMinutes
@@ -1104,6 +1176,44 @@ function getDynamicPriority(task) {
   return getDynamicTaskPriority(task);
 }
 
+function getTaskEffectiveDeadlineISO(task) {
+  if (task && task.dataISO) return task.dataISO;
+  if (task && task.relatedDeadlineISO) return task.relatedDeadlineISO;
+  return null;
+}
+
+function getPlannerScore(value, fallback) {
+  return scoreAttivitaParser(value, fallback);
+}
+
+function getPlanningUrgencyValue(task) {
+  var explicitScore = getPlannerScore(task && task.urgencyScore, null);
+  var deadlineISO = getTaskEffectiveDeadlineISO(task);
+  var giorni = getTaskDaysFromToday(deadlineISO);
+  var score = explicitScore !== null ? explicitScore : priorityToActivityScore(task && task.priorita);
+
+  if (giorni !== null) {
+    if (giorni <= 0) score = Math.max(score, 95);
+    else if (giorni <= 2) score = Math.max(score, 85);
+    else if (giorni <= 7) score = Math.max(score, 65);
+    else score = Math.max(score, 35);
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function getPlanningImportanceValue(task) {
+  return getPlannerScore(task && task.importanceScore, priorityToActivityScore(task && task.priorita));
+}
+
+function getPlanningEnergyValue(task) {
+  return getPlannerScore(task && task.energyRequiredScore, energyToActivityScore(task && task.energiaStimata));
+}
+
+function getPlanningPriorityValue(task) {
+  return (getPlanningUrgencyValue(task) * 1.4) + (getPlanningImportanceValue(task) * 1.2);
+}
+
 function logDailyPlanDebug(task, reason, details) {
   if (!DAILY_PLAN_DEBUG) return;
 
@@ -1134,7 +1244,7 @@ function logDailyPlanDebug(task, reason, details) {
 }
 
 function getTaskUrgencyBucket(task) {
-  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+  var giorni = getTaskDaysFromToday(getTaskEffectiveDeadlineISO(task));
   var priorita = getDynamicPriority(task);
 
   if (giorni !== null) {
@@ -1152,7 +1262,7 @@ function getTaskUrgencyBucket(task) {
 
 function getTaskUrgencyScore(task) {
   var bucket = getTaskUrgencyBucket(task);
-  var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
+  var giorni = getTaskDaysFromToday(getTaskEffectiveDeadlineISO(task));
   var durata = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
   var score = bucket * 100;
 
@@ -1222,7 +1332,7 @@ function getPlanSlotMinutes(tasks) {
 }
 
 function getPrimaryTaskCount(planSections) {
-  return planSections.mattina.length + planSections.pomeriggio.length;
+  return planSections.mattina.length + planSections.pomeriggio.length + (planSections.sera ? planSections.sera.length : 0);
 }
 
 function getHighEnergyCountForSlot(slotTasks) {
@@ -1243,9 +1353,11 @@ function getSlotConstraintReason(task, slotName, planSections) {
   var slotMinutes = getPlanSlotMinutes(slotTasks);
   var durataTask = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
   var highEnergyCount = getHighEnergyCountForSlot(slotTasks);
+  var maxSlotMinutes = slotName === "sera" ? DAILY_PLAN_MAX_EVENING_MINUTES : DAILY_PLAN_MAX_SLOT_MINUTES;
 
-  if (slotMinutes + durataTask > DAILY_PLAN_MAX_SLOT_MINUTES) return "slot_oltre_180_minuti";
-  if (task.energiaStimata === "alta" && highEnergyCount >= 1) return "slot_ha_gia_un_task_alta_energia";
+  if (slotMinutes + durataTask > maxSlotMinutes) return "slot_oltre_" + maxSlotMinutes + "_minuti";
+  if (task.energiaStimata === "alta" && highEnergyCount >= 1 && slotName !== "mattina") return "slot_ha_gia_un_task_alta_energia";
+  if (!isFixedPlanningBlock(task) && hasOverlapWithFixedBlocks(task, slotTasks)) return "sovrapposto_a_evento_fisso";
 
   return null;
 }
@@ -1295,7 +1407,7 @@ function isExplicitTodaySlotTask(task) {
 }
 
 function getTaskTimeMinutes(task) {
-  var normalized = normalizzaOrario(task && task.time ? task.time : null);
+  var normalized = normalizzaOrario(task && (task.time || task.startTime) ? (task.time || task.startTime) : null);
   var parts;
   var hours;
   var minutes;
@@ -1317,12 +1429,63 @@ function getTimeBasedSlotHint(task) {
 
   if (totalMinutes === null) return null;
   if (totalMinutes >= 360 && totalMinutes < 720) return "mattina";
-  if (totalMinutes >= 720 && totalMinutes < 1140) return "pomeriggio";
-  return null;
+  if (totalMinutes >= 720 && totalMinutes < 1080) return "pomeriggio";
+  return "sera";
+}
+
+function getSlotNameForTimeMinutes(totalMinutes) {
+  if (totalMinutes === null || typeof totalMinutes !== "number") return null;
+  if (totalMinutes >= 360 && totalMinutes < 720) return "mattina";
+  if (totalMinutes >= 720 && totalMinutes < 1080) return "pomeriggio";
+  return "sera";
+}
+
+function getTaskEndMinutes(task) {
+  var explicitEnd = normalizzaOrario(task && task.endTime ? task.endTime : null);
+  var start = getTaskTimeMinutes(task);
+  var duration = normalizzaDurataStimata(task && (task.durataStimataMinuti || task.durationMinutes || task.duration)) || DAILY_PLAN_DEFAULT_DURATION;
+  var parts;
+
+  if (explicitEnd) {
+    parts = explicitEnd.split(":");
+    return (parseInt(parts[0], 10) * 60) + parseInt(parts[1], 10);
+  }
+
+  if (start === null) return null;
+  return start + duration;
+}
+
+function getTaskInterval(task) {
+  var start = getTaskTimeMinutes(task);
+  var end = getTaskEndMinutes(task);
+
+  if (start === null || end === null) return null;
+  if (end <= start) end = start + (normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION);
+  return { start: start, end: end };
+}
+
+function intervalsOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.start < b.end && b.start < a.end;
 }
 
 function isPlannerHabit(task) {
   return !!(task && task.isHabit === true);
+}
+
+function isPlannerDeadline(task) {
+  return normalizePlannerActivityType(task && (task.type || task.activityType)) === "deadline";
+}
+
+function isPlannerEvent(task) {
+  var type = normalizePlannerActivityType(task && (task.type || task.activityType));
+  return type === "event" || type === "calendar";
+}
+
+function isFixedPlanningBlock(task) {
+  if (!task) return false;
+  if (isPlannerEvent(task)) return getTaskTimeMinutes(task) !== null;
+  return isFixedPlannerHabit(task);
 }
 
 function isFlexiblePlannerHabit(task) {
@@ -1369,17 +1532,13 @@ function isPlannerTaskEligibleForToday(task) {
     return false;
   }
 
+  if (isPlannerDeadline(task)) {
+    return false;
+  }
+
   if (isPlannerHabit(task)) {
     if (!isPlannerHabitDueToday(task)) {
-      if (task.frequency !== "weekly") {
-        return false;
-      }
-      task.actualDueToday = false;
-      task.flexibleOccurrence = true;
-      task.recurringLabel = task.recurringLabel || "Anticipabile";
-      if (!task.preferredSlot) task.preferredSlot = "pomeriggio";
-      task.fixedSchedule = false;
-      task.time = null;
+      return false;
     } else if (task.flexibleOccurrence !== true) {
       task.actualDueToday = true;
       task.recurringLabel = task.recurringLabel || "Habit";
@@ -1388,6 +1547,10 @@ function isPlannerTaskEligibleForToday(task) {
   }
 
   giorni = getTaskDaysFromToday(task.dataISO || null);
+  if (isPlannerEvent(task)) {
+    return giorni === 0;
+  }
+
   return giorni === null || giorni <= 0;
 }
 
@@ -1511,6 +1674,7 @@ function getExplicitSlotHint(task) {
   if (!combined) return null;
   if (/stamattina|questa\s+mattina|oggi\s+mattina/.test(combined)) return "mattina";
   if (/oggi\s+pomeriggio|questo\s+pomeriggio|nel\s+pomeriggio/.test(combined)) return "pomeriggio";
+  if (/stasera|questa\s+sera|oggi\s+sera|in\s+serata/.test(combined)) return "sera";
 
   return null;
 }
@@ -1559,6 +1723,7 @@ function getHabitPlanningWeight(task) {
 }
 
 function getPlannerEntryRank(task) {
+  if (isPlannerEvent(task)) return 0;
   if (isFixedPlannerHabit(task)) return 0;
   if (!isPlannerHabit(task) && getTaskTimeMinutes(task) !== null) return 1;
   if (!isPlannerHabit(task)) return 2;
@@ -1589,6 +1754,14 @@ function sortTasksWithHabitsForDailyPlan(tasks) {
       if (habitWeightA !== habitWeightB) return habitWeightB - habitWeightA;
     }
 
+    var planningPriorityA = getPlanningPriorityValue(a);
+    var planningPriorityB = getPlanningPriorityValue(b);
+    if (planningPriorityA !== planningPriorityB) return planningPriorityB - planningPriorityA;
+
+    var planningEnergyA = getPlanningEnergyValue(a);
+    var planningEnergyB = getPlanningEnergyValue(b);
+    if (planningEnergyA !== planningEnergyB) return planningEnergyB - planningEnergyA;
+
     var urgencyA = getTaskUrgencyScore(a);
     var urgencyB = getTaskUrgencyScore(b);
     if (urgencyA !== urgencyB) return urgencyA - urgencyB;
@@ -1603,6 +1776,37 @@ function hasTimedConflictInSlot(task, slotTasks) {
 
   for (var i = 0; i < slotTasks.length; i++) {
     if (getTaskTimeMinutes(slotTasks[i]) === time) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasOverlapWithFixedBlocks(task, slotTasks) {
+  var interval = getTaskInterval(task);
+  var source = Array.isArray(slotTasks) ? slotTasks : [];
+
+  if (!interval) return false;
+
+  for (var i = 0; i < source.length; i++) {
+    if (!isFixedPlanningBlock(source[i])) continue;
+    if (intervalsOverlap(interval, getTaskInterval(source[i]))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasTimedOverlapInSlot(task, slotTasks) {
+  var interval = getTaskInterval(task);
+  var source = Array.isArray(slotTasks) ? slotTasks : [];
+
+  if (!interval) return false;
+
+  for (var i = 0; i < source.length; i++) {
+    if (intervalsOverlap(interval, getTaskInterval(source[i]))) {
       return true;
     }
   }
@@ -1667,6 +1871,7 @@ function sortUntimedTodayTasksForPlan(tasks) {
 function sortPlanSections(planSections) {
   planSections.mattina = sortTasksWithinSlot(planSections.mattina || [], "mattina");
   planSections.pomeriggio = sortTasksWithinSlot(planSections.pomeriggio || [], "pomeriggio");
+  planSections.sera = sortTasksWithinSlot(planSections.sera || [], "sera");
   return planSections;
 }
 
@@ -1713,7 +1918,11 @@ function getPreferredSlot(task, currentPlan) {
   var giorni = getTaskDaysFromToday(task && task.dataISO ? task.dataISO : null);
   var morningCount = currentPlan.mattina.length;
   var afternoonCount = currentPlan.pomeriggio.length;
+  var eveningCount = currentPlan.sera ? currentPlan.sera.length : 0;
   var forcedSlot = getTaskForcedSlot(task);
+  var urgency = getPlanningUrgencyValue(task);
+  var energy = getPlanningEnergyValue(task);
+  var userEnergy = currentPlan.preferences && currentPlan.preferences.energy ? currentPlan.preferences.energy : "normal";
 
   if (forcedSlot) return forcedSlot;
 
@@ -1721,15 +1930,23 @@ function getPreferredSlot(task, currentPlan) {
     return task.preferredSlot;
   }
 
-  if (morningCount === 0) return "mattina";
-  if (getPlanSlotMinutes(currentPlan.mattina) < DAILY_PLAN_MAX_SLOT_MINUTES && morningCount < Math.ceil(DAILY_PLAN_MAX_TASKS / 2)) {
-    return "mattina";
+  if (energy >= 67) {
+    return userEnergy === "tired" && urgency < 85 ? "pomeriggio" : "mattina";
   }
-  if (afternoonCount === 0) return "pomeriggio";
 
-  if (task.energiaStimata === "alta") return "mattina";
-  if (task.energiaStimata === "media") return "pomeriggio";
-  if (giorni !== null && giorni <= 1) return morningCount <= afternoonCount ? "mattina" : "pomeriggio";
+  if (urgency >= 80 || (giorni !== null && giorni <= 0)) {
+    if (morningCount <= afternoonCount) return "mattina";
+    return "pomeriggio";
+  }
+
+  if (energy <= 33) {
+    return eveningCount <= afternoonCount ? "sera" : "pomeriggio";
+  }
+
+  if (morningCount === 0) return "mattina";
+  if (afternoonCount === 0) return "pomeriggio";
+  if (eveningCount === 0 && urgency < 55) return "sera";
+
   return afternoonCount <= morningCount ? "pomeriggio" : "mattina";
 }
 
@@ -1737,11 +1954,17 @@ function chooseSlotForTask(task, planSections) {
   var explicitHint = getExplicitSlotHint(task);
   var timeHint = getTimeBasedSlotHint(task);
   var preferred = getPreferredSlot(task, planSections);
-  var secondary = preferred === "mattina" ? "pomeriggio" : "mattina";
+  var slotOrder = preferred === "mattina"
+    ? ["mattina", "pomeriggio", "sera"]
+    : (preferred === "pomeriggio" ? ["pomeriggio", "mattina", "sera"] : ["sera", "pomeriggio", "mattina"]);
   var preferredReason = getSlotConstraintReason(task, preferred, planSections);
+  var explicitReason;
+  var secondary;
   var secondaryReason;
+  var i;
 
   if (timeHint) {
+    preferredReason = getSlotConstraintReason(task, timeHint, planSections);
     if (!preferredReason) {
       return { slot: timeHint, reason: "assegnato_slot_orario" };
     }
@@ -1753,13 +1976,14 @@ function chooseSlotForTask(task, planSections) {
   }
 
   if (explicitHint) {
-    if (!preferredReason) {
+    explicitReason = getSlotConstraintReason(task, explicitHint, planSections);
+    if (!explicitReason) {
       return { slot: explicitHint, reason: "assegnato_slot_esplicito" };
     }
 
     return {
       slot: null,
-      reason: explicitHint + ": " + preferredReason + " (vincolo temporale esplicito)"
+      reason: explicitHint + ": " + explicitReason + " (vincolo temporale esplicito)"
     };
   }
 
@@ -1767,104 +1991,192 @@ function chooseSlotForTask(task, planSections) {
     return { slot: preferred, reason: "assegnato_slot_preferito" };
   }
 
-  secondaryReason = getSlotConstraintReason(task, secondary, planSections);
-  if (!secondaryReason) {
-    return { slot: secondary, reason: "assegnato_slot_secondario" };
+  for (i = 0; i < slotOrder.length; i++) {
+    secondary = slotOrder[i];
+    if (secondary === preferred) continue;
+    secondaryReason = getSlotConstraintReason(task, secondary, planSections);
+    if (!secondaryReason) {
+      return { slot: secondary, reason: "assegnato_slot_secondario" };
+    }
   }
 
   return {
     slot: null,
-    reason: preferred + ": " + preferredReason + " | " + secondary + ": " + secondaryReason
+    reason: preferred + ": " + preferredReason
   };
 }
 
-function assignPrimaryTasks(tasks) {
-  var hasHabits = Array.isArray(tasks) && tasks.some(function(task) {
-    return isPlannerHabit(task);
-  });
+function normalizeDailyPlanPreferences(options) {
+  var preferences = options && options.preferences && typeof options.preferences === "object" ? options.preferences : {};
+  var energy = String(preferences.energy || preferences.userEnergy || "normal").trim().toLowerCase();
+  var availableTime = String(preferences.availableTime || preferences.time || "medium").trim().toLowerCase();
 
-  if (hasHabits) {
-    return assignPrimaryTasksWithHabits(tasks);
-  }
+  if (["stanco", "tired", "low"].indexOf(energy) !== -1) energy = "tired";
+  else if (["energized", "energised", "alta", "high"].indexOf(energy) !== -1) energy = "energized";
+  else energy = "normal";
 
-  var planSections = {
-    mattina: [],
-    pomeriggio: []
-  };
-  var source = Array.isArray(tasks) ? tasks : [];
-  var selectedTasks = source.slice(0, DAILY_PLAN_MAX_TASKS);
-  var splitIndex = Math.ceil(selectedTasks.length / 2);
-
-  planSections.mattina = selectedTasks.slice(0, splitIndex);
-  planSections.pomeriggio = selectedTasks.slice(splitIndex);
-
-  for (var i = 0; i < planSections.mattina.length; i++) {
-    logDailyPlanDebug(planSections.mattina[i], "incluso_nel_piano_principale", { slotFinale: "mattina", motivo: "split bilanciato semplice" });
-  }
-
-  for (var p = 0; p < planSections.pomeriggio.length; p++) {
-    logDailyPlanDebug(planSections.pomeriggio[p], "incluso_nel_piano_principale", { slotFinale: "pomeriggio", motivo: "split bilanciato semplice" });
-  }
-
-  for (var x = DAILY_PLAN_MAX_TASKS; x < source.length; x++) {
-    logDailyPlanDebug(source[x], "overflow_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: "oltre i primi " + DAILY_PLAN_MAX_TASKS + " task" });
-  }
+  if (["1-2h", "1-2", "short", "breve"].indexOf(availableTime) !== -1) availableTime = "short";
+  else if (["2-4h", "2-4", "medium", "media"].indexOf(availableTime) !== -1) availableTime = "medium";
+  else if (["full", "full_day", "full day", "giornata", "giornata intera"].indexOf(availableTime) !== -1) availableTime = "full";
+  else availableTime = "medium";
 
   return {
-    mattina: planSections.mattina,
-    pomeriggio: planSections.pomeriggio,
-    restaDaFareOggi: [],
-    tasks: selectedTasks,
-    futureMonitoringTasks: [],
-    blockedUrgentTasks: 0,
-    minutiMattina: getPlanSlotMinutes(planSections.mattina),
-    minutiPomeriggio: getPlanSlotMinutes(planSections.pomeriggio)
+    energy: energy,
+    availableTime: availableTime
   };
 }
 
-function assignPrimaryTasksWithHabits(tasks) {
+function getDailyPlanMaxMinutes(preferences) {
+  var availableTime = preferences && preferences.availableTime ? preferences.availableTime : "medium";
+  if (availableTime === "short") return 120;
+  if (availableTime === "full") return 480;
+  return 240;
+}
+
+function getDailyPlanMaxTasks(preferences) {
+  var availableTime = preferences && preferences.availableTime ? preferences.availableTime : "medium";
+  if (availableTime === "short") return 3;
+  if (availableTime === "full") return 8;
+  return DAILY_PLAN_MAX_TASKS;
+}
+
+function shouldDeferForUserEnergy(task, preferences) {
+  if (!preferences || preferences.energy !== "tired") return false;
+  if (getPlanningUrgencyValue(task) >= 85) return false;
+  return getPlanningEnergyValue(task) >= 67;
+}
+
+function getPlannerTypeForOutput(task) {
+  if (isPlannerHabit(task)) return "habit";
+  return normalizePlannerActivityType(task && (task.type || task.activityType));
+}
+
+function appendPlannerReason(reasons, reason) {
+  if (!reason) return;
+  if (reasons.indexOf(reason) === -1) reasons.push(reason);
+}
+
+function buildPlannerWhy(task, slotReason) {
+  var reasons = [];
+  var urgency = getPlanningUrgencyValue(task);
+  var importance = getPlanningImportanceValue(task);
+  var energy = getPlanningEnergyValue(task);
+
+  if (getPlannerTypeForOutput(task) === "calendar") {
+    appendPlannerReason(reasons, "Blocco calendario fisso: protegge un orario gia occupato.");
+  } else if (isPlannerEvent(task)) {
+    appendPlannerReason(reasons, "Evento fisso: data e ora non sono spostabili.");
+  } else if (isPlannerHabit(task)) {
+    appendPlannerReason(reasons, "Habit prevista per oggi.");
+  }
+
+  if (task && task.relatedDeadlineTitle) {
+    appendPlannerReason(reasons, "Sale di urgenza per la deadline collegata: " + task.relatedDeadlineTitle + ".");
+  }
+
+  if (urgency >= 80 && importance >= 67) {
+    appendPlannerReason(reasons, "Scelta presto per urgenza e importanza alte.");
+  } else if (urgency >= 80) {
+    appendPlannerReason(reasons, "Scelta per urgenza alta.");
+  } else if (importance >= 67) {
+    appendPlannerReason(reasons, "Scelta per importanza alta.");
+  }
+
+  if (energy >= 67) {
+    appendPlannerReason(reasons, "Richiede energia alta, quindi sta meglio prima.");
+  } else if (energy <= 33) {
+    appendPlannerReason(reasons, "Richiede poca energia, adatta a uno slot piu leggero.");
+  }
+
+  if (slotReason === "assegnato_slot_orario") {
+    appendPlannerReason(reasons, "Rispetta l'orario indicato.");
+  } else if (slotReason === "assegnato_slot_esplicito") {
+    appendPlannerReason(reasons, "Rispetta lo slot indicato.");
+  }
+
+  if (reasons.length === 0) {
+    appendPlannerReason(reasons, "Inserita per bilanciare priorita, energia e tempo disponibile.");
+  }
+
+  return reasons.slice(0, 3).join(" ");
+}
+
+function buildPlannerDeferredWhy(task, fallback) {
+  if (task && task.whyDeferred) return task.whyDeferred;
+  if (isPlannerDeadline(task)) return "Non pianificata: e una deadline, aumenta solo l'urgenza dei task collegati.";
+  if (task && task.completato === true) return "Rimandata fuori dal piano perche risulta gia completata.";
+  if (fallback) return fallback;
+  return "Rimandata per rispettare tempo disponibile, energia e vincoli della giornata.";
+}
+
+function decoratePlannerItemForOutput(task, why) {
+  var duration = normalizzaDurataStimata(task && (task.durataStimataMinuti || task.durationMinutes || task.duration)) || 0;
+
+  if (!task) return task;
+  task.title = task.title || task.testo || "";
+  task.type = getPlannerTypeForOutput(task);
+  task.activityType = task.type;
+  task.duration = duration;
+  task.durationMinutes = duration;
+  task.durataStimataMinuti = duration || task.durataStimataMinuti;
+  if (why) task.why = why;
+  if (!task.why && !task.whyDeferred) task.why = buildPlannerWhy(task, null);
+  return task;
+}
+
+function assignPrimaryTasks(tasks, preferences) {
+  var source = sortTasksWithHabitsForDailyPlan(Array.isArray(tasks) ? tasks : []);
+  var needsStructuredAssignment = source.some(function(task) {
+    return isPlannerHabit(task) || isPlannerEvent(task) || getTaskTimeMinutes(task) !== null;
+  });
+
+  if (needsStructuredAssignment) {
+    return assignPrimaryTasksWithHabits(tasks, preferences);
+  }
+
   var planSections = {
     mattina: [],
-    pomeriggio: []
+    pomeriggio: [],
+    sera: [],
+    preferences: preferences || normalizeDailyPlanPreferences()
   };
-  var source = sortTasksWithHabitsForDailyPlan(Array.isArray(tasks) ? tasks : []);
   var selectedTasks = [];
   var deferredTasks = [];
+  var maxTasks = getDailyPlanMaxTasks(preferences);
+  var maxMinutes = getDailyPlanMaxMinutes(preferences);
+  var plannedMinutes = 0;
 
   for (var i = 0; i < source.length; i++) {
     var task = source[i];
-    var fixedHabit = isFixedPlannerHabit(task);
-    var underMainLimit = selectedTasks.length < DAILY_PLAN_MAX_TASKS;
-    var lowHabitOverflow = isPlannerHabit(task) && task.priorita === "bassa" && !fixedHabit && selectedTasks.length >= 3;
+    var taskDuration = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
+    var chosen;
 
-    if (!fixedHabit && (!underMainLimit || lowHabitOverflow)) {
-      deferredTasks.push(task);
-      logDailyPlanDebug(task, "overflow_dal_piano_principale", { slotFinale: "seAvanzaTempo", motivo: isPlannerHabit(task) ? "habit flessibile a bassa priorita" : "oltre i primi " + DAILY_PLAN_MAX_TASKS + " task" });
+    if (shouldDeferForUserEnergy(task, preferences)) {
+      task.whyDeferred = "Rimandato: richiede molta energia e oggi l'energia impostata e bassa.";
+      deferredTasks.push(decoratePlannerItemForOutput(task, null));
+      logDailyPlanDebug(task, "rinviato_per_energia_utente", { slotFinale: "daRimandare", motivo: task.whyDeferred });
       continue;
     }
 
-    var chosen = chooseSlotForTask(task, planSections);
-    if (!chosen.slot && fixedHabit) {
-      chosen = {
-        slot: getTaskForcedSlot(task),
-        reason: "habit_fissa_riserva_orario"
-      };
+    if (selectedTasks.length >= maxTasks || plannedMinutes + taskDuration > maxMinutes) {
+      task.whyDeferred = "Rimandato per rispettare il tempo disponibile.";
+      deferredTasks.push(decoratePlannerItemForOutput(task, null));
+      logDailyPlanDebug(task, "overflow_dal_piano_principale", { slotFinale: "daRimandare", motivo: task.whyDeferred });
+      continue;
     }
 
+    chosen = chooseSlotForTask(task, planSections);
     if (!chosen.slot) {
-      deferredTasks.push(task);
-      logDailyPlanDebug(task, "rinviato_per_vincoli_slot", { slotFinale: "seAvanzaTempo", motivo: chosen.reason });
+      task.whyDeferred = "Rimandato per vincoli di slot: " + chosen.reason;
+      deferredTasks.push(decoratePlannerItemForOutput(task, null));
+      logDailyPlanDebug(task, "rinviato_per_vincoli_slot", { slotFinale: "daRimandare", motivo: task.whyDeferred });
       continue;
     }
 
-    if (!fixedHabit && hasTimedConflictInSlot(task, planSections[chosen.slot])) {
-      deferredTasks.push(task);
-      logDailyPlanDebug(task, "rinviato_per_conflitto_orario", { slotFinale: "seAvanzaTempo", motivo: "slot gia riservato allo stesso orario" });
-      continue;
-    }
-
+    decoratePlannerItemForOutput(task, buildPlannerWhy(task, chosen.reason));
     planSections[chosen.slot].push(task);
     selectedTasks.push(task);
+    plannedMinutes += taskDuration;
     logDailyPlanDebug(task, "incluso_nel_piano_principale", { slotFinale: chosen.slot, motivo: chosen.reason });
   }
 
@@ -1873,13 +2185,99 @@ function assignPrimaryTasksWithHabits(tasks) {
   return {
     mattina: planSections.mattina,
     pomeriggio: planSections.pomeriggio,
-    restaDaFareOggi: [],
+    sera: planSections.sera,
+    restaDaFareOggi: planSections.sera,
     tasks: selectedTasks,
     futureMonitoringTasks: [],
     blockedUrgentTasks: 0,
     deferredTasks: deferredTasks,
     minutiMattina: getPlanSlotMinutes(planSections.mattina),
-    minutiPomeriggio: getPlanSlotMinutes(planSections.pomeriggio)
+    minutiPomeriggio: getPlanSlotMinutes(planSections.pomeriggio),
+    minutiSera: getPlanSlotMinutes(planSections.sera)
+  };
+}
+
+function assignPrimaryTasksWithHabits(tasks, preferences) {
+  var planSections = {
+    mattina: [],
+    pomeriggio: [],
+    sera: [],
+    preferences: preferences || normalizeDailyPlanPreferences()
+  };
+  var source = sortTasksWithHabitsForDailyPlan(Array.isArray(tasks) ? tasks : []);
+  var selectedTasks = [];
+  var deferredTasks = [];
+  var maxTasks = getDailyPlanMaxTasks(preferences);
+  var maxMinutes = getDailyPlanMaxMinutes(preferences);
+  var plannedFlexibleMinutes = 0;
+
+  for (var i = 0; i < source.length; i++) {
+    var task = source[i];
+    var fixedHabit = isFixedPlannerHabit(task);
+    var fixedBlock = isFixedPlanningBlock(task);
+    var underMainLimit = selectedTasks.length < maxTasks;
+    var lowHabitOverflow = isPlannerHabit(task) && task.priorita === "bassa" && !fixedHabit && selectedTasks.length >= 3;
+    var taskDuration = normalizzaDurataStimata(task && task.durataStimataMinuti) || DAILY_PLAN_DEFAULT_DURATION;
+
+    if (!fixedBlock && shouldDeferForUserEnergy(task, preferences)) {
+      task.whyDeferred = "Rimandato: richiede molta energia e oggi l'energia impostata e bassa.";
+      deferredTasks.push(decoratePlannerItemForOutput(task, null));
+      logDailyPlanDebug(task, "rinviato_per_energia_utente", { slotFinale: "daRimandare", motivo: task.whyDeferred });
+      continue;
+    }
+
+    if (!fixedBlock && (!underMainLimit || lowHabitOverflow || plannedFlexibleMinutes + taskDuration > maxMinutes)) {
+      task.whyDeferred = plannedFlexibleMinutes + taskDuration > maxMinutes
+        ? "Rimandato per rispettare il tempo disponibile."
+        : (isPlannerHabit(task) ? "Rimandato: habit flessibile a bassa priorita." : "Rimandato: oltre il numero di attivita sostenibile.");
+      deferredTasks.push(decoratePlannerItemForOutput(task, null));
+      logDailyPlanDebug(task, "overflow_dal_piano_principale", { slotFinale: "daRimandare", motivo: task.whyDeferred });
+      continue;
+    }
+
+    var chosen = chooseSlotForTask(task, planSections);
+    if (!chosen.slot && fixedBlock) {
+      chosen = {
+        slot: getTaskForcedSlot(task),
+        reason: isPlannerEvent(task) ? "evento_fisso" : "habit_fissa_riserva_orario"
+      };
+    }
+
+    if (!chosen.slot) {
+      task.whyDeferred = "Rimandato per vincoli di slot: " + chosen.reason;
+      deferredTasks.push(decoratePlannerItemForOutput(task, null));
+      logDailyPlanDebug(task, "rinviato_per_vincoli_slot", { slotFinale: "daRimandare", motivo: chosen.reason });
+      continue;
+    }
+
+    if (!fixedBlock && hasTimedOverlapInSlot(task, planSections[chosen.slot])) {
+      task.whyDeferred = "Rimandato per evitare sovrapposizioni con eventi o blocchi fissi.";
+      deferredTasks.push(decoratePlannerItemForOutput(task, null));
+      logDailyPlanDebug(task, "rinviato_per_conflitto_orario", { slotFinale: "daRimandare", motivo: task.whyDeferred });
+      continue;
+    }
+
+    decoratePlannerItemForOutput(task, buildPlannerWhy(task, chosen.reason));
+    planSections[chosen.slot].push(task);
+    selectedTasks.push(task);
+    if (!fixedBlock) plannedFlexibleMinutes += taskDuration;
+    logDailyPlanDebug(task, "incluso_nel_piano_principale", { slotFinale: chosen.slot, motivo: chosen.reason });
+  }
+
+  planSections = sortPlanSections(planSections);
+
+  return {
+    mattina: planSections.mattina,
+    pomeriggio: planSections.pomeriggio,
+    sera: planSections.sera,
+    restaDaFareOggi: planSections.sera,
+    tasks: selectedTasks,
+    futureMonitoringTasks: [],
+    blockedUrgentTasks: 0,
+    deferredTasks: deferredTasks,
+    minutiMattina: getPlanSlotMinutes(planSections.mattina),
+    minutiPomeriggio: getPlanSlotMinutes(planSections.pomeriggio),
+    minutiSera: getPlanSlotMinutes(planSections.sera)
   };
 }
 
@@ -1889,7 +2287,8 @@ function buildExtraTimeTasks(sortedTasks, selectedTasks, deferredTodayTasks) {
 
   for (var d = 0; d < deferred.length; d++) {
     if (extra.indexOf(deferred[d]) === -1) {
-      extra.push(deferred[d]);
+      deferred[d].whyDeferred = buildPlannerDeferredWhy(deferred[d], null);
+      extra.push(decoratePlannerItemForOutput(deferred[d], null));
     }
   }
 
@@ -1898,8 +2297,9 @@ function buildExtraTimeTasks(sortedTasks, selectedTasks, deferredTodayTasks) {
     if (selectedTasks.indexOf(task) !== -1) continue;
     if (extra.indexOf(task) !== -1) continue;
 
-    extra.push(task);
-    logDailyPlanDebug(task, "incluso_in_se_avanza_tempo", { slotFinale: "seAvanzaTempo", motivo: "overflow oltre i primi " + DAILY_PLAN_MAX_TASKS + " task" });
+    task.whyDeferred = buildPlannerDeferredWhy(task, "Rimandato perche fuori dal piano principale di oggi.");
+    extra.push(decoratePlannerItemForOutput(task, null));
+    logDailyPlanDebug(task, "incluso_in_da_rimandare", { slotFinale: "daRimandare", motivo: task.whyDeferred });
   }
 
   return extra;
@@ -1937,60 +2337,169 @@ function logDailyPlanDistribution(tasks, planSections) {
   console.log("[FloMind][OrganizzaGiornata] assigned sections", {
     mattina: (planSections.mattina || []).map(function(task) { return task.testo; }),
     pomeriggio: (planSections.pomeriggio || []).map(function(task) { return task.testo; }),
-    restaDaFareOggi: (planSections.restaDaFareOggi || []).map(function(task) { return task.testo; }),
-    seAvanzaTempo: (planSections.seAvanzaTempo || []).map(function(task) { return task.testo; })
+    sera: (planSections.sera || planSections.restaDaFareOggi || []).map(function(task) { return task.testo; }),
+    daRimandare: (planSections.daRimandare || planSections.seAvanzaTempo || []).map(function(task) { return task.testo; })
   });
 }
 
-function buildSmartDailyPlan(tasks) {
+function getPlannerNestedValue(source, path) {
+  var current = source;
+
+  for (var i = 0; i < path.length; i++) {
+    if (!current || typeof current !== "object") return null;
+    current = current[path[i]];
+  }
+
+  return current === undefined || current === null ? null : current;
+}
+
+function getPlannerFirstValue(source, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var value = Array.isArray(key) ? getPlannerNestedValue(source, key) : (source ? source[key] : null);
+    if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+  }
+  return null;
+}
+
+function formatPlannerClockFromDate(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return null;
+  return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0");
+}
+
+function addMinutesToPlannerClock(startTime, durationMinutes) {
+  var start = normalizzaOrario(startTime);
+  var duration = normalizzaDurataStimata(durationMinutes);
+  var parts;
+  var total;
+
+  if (!start || !duration) return null;
+  parts = start.split(":");
+  total = (parseInt(parts[0], 10) * 60) + parseInt(parts[1], 10) + duration;
+  total = ((total % 1440) + 1440) % 1440;
+  return String(Math.floor(total / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+}
+
+function normalizeCalendarEventForLocalPlan(event, index) {
+  var source = event && typeof event === "object" ? event : {};
+  var busyValue = getPlannerFirstValue(source, ["busy", "isBusy", "opaque"]);
+  var transparency = String(getPlannerFirstValue(source, ["transparency", "availability"]) || "").toLowerCase();
+  var rawStart = getPlannerFirstValue(source, [["start", "dateTime"], ["start", "date"], "start", "startTime", "startDate", "dateTime"]);
+  var rawEnd = getPlannerFirstValue(source, [["end", "dateTime"], ["end", "date"], "end", "endTime", "endDate"]);
+  var rawDate = getPlannerFirstValue(source, ["date", "dataISO", "day"]);
+  var startDate = rawStart && String(rawStart).indexOf("T") !== -1 ? new Date(rawStart) : null;
+  var endDate = rawEnd && String(rawEnd).indexOf("T") !== -1 ? new Date(rawEnd) : null;
+  var dateISO = normalizzaDataISOParser(rawDate) || (startDate && !isNaN(startDate.getTime()) ? formatISO(startDate) : null);
+  var startTime = normalizzaOrario(getPlannerFirstValue(source, ["time", "startTime", "orario"])) ||
+    (startDate && !isNaN(startDate.getTime()) ? formatPlannerClockFromDate(startDate) : null);
+  var endTime = normalizzaOrario(getPlannerFirstValue(source, ["endTime", "fine"])) ||
+    (endDate && !isNaN(endDate.getTime()) ? formatPlannerClockFromDate(endDate) : null);
+  var duration = normalizzaDurataStimata(getPlannerFirstValue(source, ["durationMinutes", "durataStimataMinuti", "duration"]));
+  var title = String(getPlannerFirstValue(source, ["title", "summary", "name", "text", "label"]) || ("Calendario " + (index + 1))).trim();
+
+  if (busyValue === false || transparency === "transparent" || transparency === "free") return null;
+  if (!dateISO || dateISO !== formatISO(inizioOggiLocale())) return null;
+  if (!startTime) return null;
+
+  if (!duration && startDate && endDate && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && endDate > startDate) {
+    duration = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+  }
+  if (!duration) duration = DAILY_PLAN_DEFAULT_DURATION;
+  if (!endTime) endTime = addMinutesToPlannerClock(startTime, duration);
+
+  return decoratePlannerItemForOutput({
+    id: String(getPlannerFirstValue(source, ["id", "eventId", "uid"]) || ("calendar:" + index)),
+    title: title,
+    testo: title,
+    type: "calendar",
+    activityType: "calendar",
+    priorita: "alta",
+    dataISO: dateISO,
+    scadenzaOriginale: dateISO,
+    time: startTime,
+    startTime: startTime,
+    endTime: endTime,
+    durataStimataMinuti: duration,
+    durationMinutes: duration,
+    energiaStimata: "bassa",
+    importanceScore: 100,
+    urgencyScore: 100,
+    energyRequiredScore: 0,
+    flexibilityScore: 0,
+    category: "calendar",
+    dependencies: [],
+    completato: false,
+    why: "Blocco calendario fisso: protegge un orario gia occupato."
+  }, "Blocco calendario fisso: protegge un orario gia occupato.");
+}
+
+function normalizeCalendarEventsForLocalPlan(events) {
+  var source = Array.isArray(events) ? events : [];
+  var normalized = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var event = normalizeCalendarEventForLocalPlan(source[i], i);
+    if (event) normalized.push(event);
+  }
+
+  return normalized;
+}
+
+function buildSmartDailyPlan(tasks, options) {
+  var preferences = normalizeDailyPlanPreferences(options);
+  var calendarBlocks = normalizeCalendarEventsForLocalPlan(options && options.calendarEvents);
+  var sourceTasks = Array.isArray(tasks) ? tasks : [];
+  var sourceWithBlocks = sourceTasks.concat(calendarBlocks);
   var pendenti = [];
 
   if (DAILY_PLAN_DEBUG) {
     console.log("[FloMind][OrganizzaGiornata] Inizio buildSmartDailyPlan", {
-      totaleTaskRicevuti: Array.isArray(tasks) ? tasks.length : 0,
+      totaleTaskRicevuti: sourceWithBlocks.length,
       dataOggi: formatISO(inizioOggiLocale())
     });
   }
 
-  for (var i = 0; i < tasks.length; i++) {
-    if (!tasks[i] || !tasks[i].testo) {
+  for (var i = 0; i < sourceWithBlocks.length; i++) {
+    if (!sourceWithBlocks[i] || !sourceWithBlocks[i].testo) {
       continue;
     }
 
-    if (tasks[i].completato) {
-      logDailyPlanDebug(tasks[i], "escluso_dal_piano", "task completato");
+    if (sourceWithBlocks[i].completato) {
+      logDailyPlanDebug(sourceWithBlocks[i], "escluso_dal_piano", "attivita completata");
       continue;
     }
 
-    if (!isPlannerTaskEligibleForToday(tasks[i])) {
-      logDailyPlanDebug(tasks[i], "escluso_dal_piano", "task futuro o habit non dovuta oggi");
+    if (!isPlannerTaskEligibleForToday(sourceWithBlocks[i])) {
+      logDailyPlanDebug(sourceWithBlocks[i], "escluso_dal_piano", "attivita futura, deadline o habit non dovuta oggi");
       continue;
     }
 
-    pendenti.push(tasks[i]);
-    logDailyPlanDebug(tasks[i], "candidato", "task dovuto oggi considerato per il piano");
+    pendenti.push(sourceWithBlocks[i]);
+    logDailyPlanDebug(sourceWithBlocks[i], "candidato", "attivita valida per il piano di oggi");
   }
 
   var ordinati = pendenti.slice();
-  var scelta = assignPrimaryTasks(ordinati);
+  var scelta = assignPrimaryTasks(ordinati, preferences);
   var planSections = {
     mattina: scelta.mattina.slice(),
     pomeriggio: scelta.pomeriggio.slice(),
-    restaDaFareOggi: Array.isArray(scelta.restaDaFareOggi) ? scelta.restaDaFareOggi.slice() : [],
-    seAvanzaTempo: []
+    sera: Array.isArray(scelta.sera) ? scelta.sera.slice() : (Array.isArray(scelta.restaDaFareOggi) ? scelta.restaDaFareOggi.slice() : []),
+    daRimandare: []
   };
 
-  planSections.seAvanzaTempo = buildExtraTimeTasks(ordinati, scelta.tasks, scelta.deferredTasks || planSections.restaDaFareOggi);
+  planSections.daRimandare = buildExtraTimeTasks(ordinati, scelta.tasks, scelta.deferredTasks || []);
 
-  if (scelta.tasks.length === 0 && planSections.seAvanzaTempo.length === 0 && planSections.restaDaFareOggi.length === 0 && ordinati.length > 0) {
+  if (scelta.tasks.length === 0 && planSections.daRimandare.length === 0 && planSections.sera.length === 0 && ordinati.length > 0) {
     var rescueTask = ordinati[0];
-    var rescueSlot = chooseSlotForTask(rescueTask, { mattina: [], pomeriggio: [] });
+    var rescueSlot = chooseSlotForTask(rescueTask, { mattina: [], pomeriggio: [], sera: [], preferences: preferences });
 
     if (rescueSlot.slot) {
+      decoratePlannerItemForOutput(rescueTask, buildPlannerWhy(rescueTask, rescueSlot.reason));
       planSections[rescueSlot.slot].push(rescueTask);
       scelta.tasks.push(rescueTask);
       scelta.minutiMattina = rescueSlot.slot === "mattina" ? getPlanSlotMinutes(planSections.mattina) : 0;
       scelta.minutiPomeriggio = rescueSlot.slot === "pomeriggio" ? getPlanSlotMinutes(planSections.pomeriggio) : 0;
+      scelta.minutiSera = rescueSlot.slot === "sera" ? getPlanSlotMinutes(planSections.sera) : 0;
       logDailyPlanDebug(rescueTask, "rescue_incluso_nel_piano", "nessun task selezionato: attivato fallback sicuro");
     }
   }
@@ -1998,38 +2507,208 @@ function buildSmartDailyPlan(tasks) {
   if (DAILY_PLAN_DEBUG) {
     logDailyPlanDistribution(ordinati, planSections);
     console.log("[FloMind][OrganizzaGiornata] Fine buildSmartDailyPlan", {
-      taskPrincipali: scelta.tasks.length,
-      taskMattina: planSections.mattina.length,
-      taskPomeriggio: planSections.pomeriggio.length,
-      taskRestaDaFareOggi: planSections.restaDaFareOggi.length,
-      taskExtra: planSections.seAvanzaTempo.length,
-      taskFuturiMonitorati: scelta.futureMonitoringTasks.length,
-      blockedUrgentTasks: scelta.blockedUrgentTasks
-    });
+	      taskPrincipali: scelta.tasks.length,
+	      taskMattina: planSections.mattina.length,
+	      taskPomeriggio: planSections.pomeriggio.length,
+	      taskSera: planSections.sera.length,
+	      taskDaRimandare: planSections.daRimandare.length,
+	      taskFuturiMonitorati: scelta.futureMonitoringTasks.length,
+	      blockedUrgentTasks: scelta.blockedUrgentTasks
+	    });
   }
 
   return {
     data: formatISO(inizioOggiLocale()),
     mattina: planSections.mattina,
     pomeriggio: planSections.pomeriggio,
-    restaDaFareOggi: planSections.restaDaFareOggi,
-    seAvanzaTempo: planSections.seAvanzaTempo,
-    daFareOggi: planSections.mattina.concat(planSections.pomeriggio).concat(planSections.restaDaFareOggi),
+    sera: planSections.sera,
+    restaDaFareOggi: planSections.sera,
+    daRimandare: planSections.daRimandare,
+    seAvanzaTempo: planSections.daRimandare,
+    daFareOggi: planSections.mattina.concat(planSections.pomeriggio).concat(planSections.sera),
     totali: {
       taskConsiderati: ordinati.length,
       minutiMattina: scelta.minutiMattina,
       minutiPomeriggio: scelta.minutiPomeriggio,
-      minutiDaFareOggi: scelta.minutiMattina + scelta.minutiPomeriggio,
+      minutiSera: scelta.minutiSera || 0,
+      minutiDaFareOggi: scelta.minutiMattina + scelta.minutiPomeriggio + (scelta.minutiSera || 0),
       taskMattina: planSections.mattina.length,
       taskPomeriggio: planSections.pomeriggio.length,
-      taskRestaDaFareOggi: planSections.restaDaFareOggi.length,
+      taskSera: planSections.sera.length,
+      taskRestaDaFareOggi: planSections.sera.length,
+      taskDaRimandare: planSections.daRimandare.length,
+      taskSeAvanzaTempo: planSections.daRimandare.length,
       taskFuturiMonitorati: scelta.futureMonitoringTasks.length
     }
   };
 }
 
-function buildDailyPlan(tasks) {
-  return buildSmartDailyPlan(tasks);
+function buildDailyPlan(tasks, options) {
+  return buildSmartDailyPlan(tasks, options);
+}
+
+function buildPlannerActivityPayload(task) {
+  var type = getPlannerTypeForOutput(task);
+  var duration = normalizzaDurataStimata(task && (task.durataStimataMinuti || task.durationMinutes || task.duration)) || 0;
+
+  return {
+    id: task && task.id ? String(task.id) : generaIdAzione(task && task.testo ? task.testo : ""),
+    type: type,
+    title: task && (task.title || task.testo) ? String(task.title || task.testo) : "Attivita",
+    date: task && (task.dataISO || task.date) ? String(task.dataISO || task.date) : null,
+    startTime: task && (task.startTime || task.time) ? normalizzaOrario(task.startTime || task.time) : null,
+    endTime: task && task.endTime ? normalizzaOrario(task.endTime) : null,
+    indicativeTimeSlot: task && task.indicativeTimeSlot ? task.indicativeTimeSlot : null,
+    durationMinutes: duration,
+    importanceScore: getPlanningImportanceValue(task),
+    urgencyScore: getPlanningUrgencyValue(task),
+    energyRequiredScore: getPlanningEnergyValue(task),
+    flexibilityScore: scoreAttivitaParser(task && task.flexibilityScore, type === "task" ? 80 : 10),
+    category: task && task.category ? task.category : "other",
+    dependencies: Array.isArray(task && task.dependencies) ? task.dependencies.slice() : [],
+    completed: task && task.completato === true,
+    completedToday: task && (task.completato === true || task.completedToday === true),
+    relatedDeadlineTitle: task && task.relatedDeadlineTitle ? task.relatedDeadlineTitle : null,
+    relatedDeadlineISO: task && task.relatedDeadlineISO ? task.relatedDeadlineISO : null
+  };
+}
+
+function buildPlannerSourceMap(tasks, calendarBlocks) {
+  var source = (Array.isArray(tasks) ? tasks : []).concat(Array.isArray(calendarBlocks) ? calendarBlocks : []);
+  var map = {};
+
+  for (var i = 0; i < source.length; i++) {
+    var item = source[i];
+    if (!item) continue;
+    if (item.id) map[String(item.id)] = item;
+    if (item.testo) map["text:" + normalizeText(item.testo)] = item;
+    if (item.title) map["text:" + normalizeText(item.title)] = item;
+  }
+
+  return map;
+}
+
+function normalizeAiPlannerSectionItems(items, sourceMap, deferred) {
+  var source = Array.isArray(items) ? items : [];
+  var normalized = [];
+
+  for (var i = 0; i < source.length; i++) {
+    var item = source[i] || {};
+    var id = item.id ? String(item.id) : "";
+    var title = item.title ? String(item.title) : "";
+    var original = (id && sourceMap[id]) || (title && sourceMap["text:" + normalizeText(title)]) || null;
+    var task = original ? Object.assign({}, original) : {
+      id: id || generaIdAzione(title || ("ai_plan_item_" + i)),
+      testo: title || "Elemento pianificato",
+      title: title || "Elemento pianificato",
+      type: normalizePlannerActivityType(item.type || "task"),
+      activityType: normalizePlannerActivityType(item.type || "task"),
+      durataStimataMinuti: normalizzaDurataStimata(item.durationMinutes) || 0,
+      durationMinutes: normalizzaDurataStimata(item.durationMinutes) || 0,
+      priorita: "media",
+      energiaStimata: "media",
+      completato: false
+    };
+
+    task.title = title || task.title || task.testo;
+    task.testo = task.testo || task.title;
+    task.type = normalizePlannerActivityType(item.type || task.type || task.activityType);
+    task.activityType = task.type;
+    task.durationMinutes = normalizzaDurataStimata(item.durationMinutes) || task.durationMinutes || task.durataStimataMinuti || 0;
+    task.duration = task.durationMinutes;
+    task.durataStimataMinuti = task.durationMinutes;
+
+    if (deferred) {
+      task.whyDeferred = item.whyDeferred || item.why || buildPlannerDeferredWhy(task, null);
+    } else {
+      task.why = item.why || item.whyChosen || buildPlannerWhy(task, null);
+    }
+
+    normalized.push(decoratePlannerItemForOutput(task, deferred ? null : task.why));
+  }
+
+  return normalized;
+}
+
+function normalizeAiDailyPlanPayload(payload, tasks, calendarBlocks) {
+  var source = payload && typeof payload === "object" ? payload : {};
+  var sections = source.sections && typeof source.sections === "object" ? source.sections : {};
+  var sourceMap = buildPlannerSourceMap(tasks, calendarBlocks);
+  var mattina = normalizeAiPlannerSectionItems(sections.morning || sections.mattina, sourceMap, false);
+  var pomeriggio = normalizeAiPlannerSectionItems(sections.afternoon || sections.pomeriggio, sourceMap, false);
+  var sera = normalizeAiPlannerSectionItems(sections.evening || sections.sera, sourceMap, false);
+  var daRimandare = normalizeAiPlannerSectionItems(source.deferred || source.daRimandare, sourceMap, true);
+
+  return normalizeDailyPlan({
+    data: formatISO(inizioOggiLocale()),
+    mattina: mattina,
+    pomeriggio: pomeriggio,
+    sera: sera,
+    daRimandare: daRimandare,
+    meta: {
+      planner: "ai",
+      summary: source.summary || null
+    }
+  });
+}
+
+async function fetchCalendarEventsForPlanning() {
+  if (!canUseCalendarIntegration(getCurrentAppUser()) || !userCanUseGoogleCalendar()) {
+    return [];
+  }
+
+  try {
+    var response = await fetchBackend("/calendar/events/today", {
+      method: "GET"
+    });
+    var data = await response.json().catch(function() { return {}; });
+    if (!response.ok) return [];
+    return Array.isArray(data.events) ? data.events : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+async function buildAiDailyPlan(tasks, options) {
+  var calendarEvents = options && Array.isArray(options.calendarEvents) ? options.calendarEvents : [];
+  var calendarBlocks = normalizeCalendarEventsForLocalPlan(calendarEvents);
+  var payload = {
+    locale: typeof navigator !== "undefined" && navigator.language ? navigator.language : "it-IT",
+    preferences: normalizeDailyPlanPreferences(options),
+    activities: (Array.isArray(tasks) ? tasks : []).concat(calendarBlocks).map(buildPlannerActivityPayload),
+    calendarEvents: []
+  };
+  var response = await fetchBackend("/plan-day", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  var data = await response.json().catch(function() { return {}; });
+
+  if (!response.ok) {
+    throw new Error(data.error || "Planner AI non disponibile.");
+  }
+
+  return normalizeAiDailyPlanPayload(data, tasks, calendarBlocks);
+}
+
+async function buildDailyPlanForCurrentUser(tasks, options) {
+  var user = getCurrentAppUser();
+  var calendarEvents = options && Array.isArray(options.calendarEvents)
+    ? options.calendarEvents
+    : (getCurrentUserPlan(user) === "pro" ? await fetchCalendarEventsForPlanning() : []);
+
+  if (getCurrentUserPlan(user) === "pro") {
+    try {
+      return await buildAiDailyPlan(tasks, Object.assign({}, options || {}, { calendarEvents: calendarEvents }));
+    } catch (error) {
+      console.warn("[FloMind][OrganizzaGiornata] Planner AI non disponibile, uso planner locale.", error && error.message ? error.message : error);
+    }
+  }
+
+  return buildDailyPlan(tasks, Object.assign({}, options || {}, { calendarEvents: calendarEvents }));
 }
 
 function getDailyPlanTaskSignature(tasks) {
@@ -2044,13 +2723,14 @@ function getDailyPlanTaskSignature(tasks) {
       task.id || generaIdAzione(task.testo || ""),
       normalizeText(task.testo || ""),
       task.priorita || "bassa",
-      task.dataISO || "",
-      task.time || "",
-      task.durataStimataMinuti || "",
-      task.isHabit ? "habit" : "task",
-      task.habitId || "",
-      task.completato ? "1" : "0"
-    ].join("|"));
+	      task.dataISO || "",
+	      task.time || task.startTime || "",
+	      task.endTime || "",
+	      task.durataStimataMinuti || "",
+	      task.type || task.activityType || (task.isHabit ? "habit" : "task"),
+	      task.habitId || "",
+	      task.completato ? "1" : "0"
+	    ].join("|"));
   }
 
   normalized.sort();
@@ -2161,6 +2841,42 @@ function appendTaskMeta(meta, task) {
   }
 }
 
+function normalizePlannerActivityType(value) {
+  var raw = String(value || "").trim().toLowerCase();
+  if (raw === "event" || raw === "deadline" || raw === "task" || raw === "habit" || raw === "calendar") {
+    return raw;
+  }
+  return "task";
+}
+
+function activityScoreToPriority(score) {
+  var normalized = scoreAttivitaParser(score, 20);
+  if (normalized >= 67) return "alta";
+  if (normalized >= 34) return "media";
+  return "bassa";
+}
+
+function activityScoreToEnergy(score) {
+  var normalized = scoreAttivitaParser(score, 35);
+  if (normalized >= 67) return "alta";
+  if (normalized >= 34) return "media";
+  return "bassa";
+}
+
+function priorityToActivityScore(priority) {
+  var raw = String(priority || "").trim().toLowerCase();
+  if (raw === "alta" || raw === "high") return 85;
+  if (raw === "media" || raw === "medium") return 50;
+  return 20;
+}
+
+function energyToActivityScore(energy) {
+  var raw = String(energy || "").trim().toLowerCase();
+  if (raw === "alta" || raw === "high") return 85;
+  if (raw === "media" || raw === "medium") return 50;
+  return 25;
+}
+
 function createDailyPlanSummaryChip(text) {
   var chip = document.createElement("span");
   chip.className = "daily-plan-summary-chip";
@@ -2168,26 +2884,28 @@ function createDailyPlanSummaryChip(text) {
   return chip;
 }
 
-function renderDailyPlanSummaryChips(container, taskCount, morningMinutes, afternoonMinutes) {
+function renderDailyPlanSummaryChips(container, taskCount, morningMinutes, afternoonMinutes, eveningMinutes) {
   if (!container) return;
   container.innerHTML = "";
-  container.appendChild(createDailyPlanSummaryChip(taskCount + " task principali"));
+  container.appendChild(createDailyPlanSummaryChip(taskCount + " attivita pianificate"));
   container.appendChild(createDailyPlanSummaryChip("Mattina " + morningMinutes + " min"));
   container.appendChild(createDailyPlanSummaryChip("Pomeriggio " + afternoonMinutes + " min"));
+  container.appendChild(createDailyPlanSummaryChip("Sera " + eveningMinutes + " min"));
 }
 
 function appendDailyPlanCompactMeta(meta, task) {
   var hasMeta = false;
+  var itemType = getPlannerTypeForOutput(task);
 
-  if (isPlannerHabit(task)) {
-    var habit = document.createElement("span");
-    habit.className = "piano-habit-label";
-    habit.textContent = "Habit";
-    meta.appendChild(habit);
+  if (itemType && itemType !== "task") {
+    var typeBadge = document.createElement("span");
+    typeBadge.className = "piano-habit-label";
+    typeBadge.textContent = itemType === "calendar" ? "Calendario" : (itemType === "event" ? "Evento" : "Habit");
+    meta.appendChild(typeBadge);
     hasMeta = true;
   }
 
-  var durataMinuti = normalizzaDurataStimata(task && task.durataStimataMinuti);
+  var durataMinuti = normalizzaDurataStimata(task && (task.durataStimataMinuti || task.durationMinutes || task.duration));
   if (durataMinuti) {
     if (hasMeta) {
       var separator = document.createElement("span");
@@ -2203,6 +2921,36 @@ function appendDailyPlanCompactMeta(meta, task) {
     hasMeta = true;
   }
 
+  if (task && (task.startTime || task.time)) {
+    if (hasMeta) {
+      var timeSeparator = document.createElement("span");
+      timeSeparator.className = "piano-task-meta-separator";
+      timeSeparator.textContent = "\u2022";
+      meta.appendChild(timeSeparator);
+    }
+
+    var time = document.createElement("span");
+    time.className = "badge-time";
+    time.textContent = task.endTime ? (task.startTime || task.time) + "-" + task.endTime : (task.startTime || task.time);
+    meta.appendChild(time);
+    hasMeta = true;
+  }
+
+  if (task && (task.why || task.whyDeferred)) {
+    if (hasMeta) {
+      var whySeparator = document.createElement("span");
+      whySeparator.className = "piano-task-meta-separator";
+      whySeparator.textContent = "\u2022";
+      meta.appendChild(whySeparator);
+    }
+
+    var why = document.createElement("span");
+    why.className = "piano-task-why";
+    why.textContent = task.whyDeferred || task.why;
+    meta.appendChild(why);
+    hasMeta = true;
+  }
+
   return hasMeta;
 }
 
@@ -2215,7 +2963,7 @@ function renderDailyPlanTasks(listId, tasks) {
   for (var i = 0; i < tasks.length; i++) {
     var task = tasks[i];
     var li = document.createElement("li");
-    li.className = "piano-task-item priorita-" + (task.priorita || "bassa");
+    li.className = "piano-task-item priorita-" + (task.priorita || "bassa") + " piano-task-type-" + getPlannerTypeForOutput(task);
     if (isPlannerHabit(task)) {
       li.classList.add("piano-habit-item");
       if (isFlexiblePlannerHabit(task)) {
@@ -2230,7 +2978,7 @@ function renderDailyPlanTasks(listId, tasks) {
 
     var testo = document.createElement("div");
     testo.className = "piano-task-testo";
-    testo.textContent = task.testo;
+    testo.textContent = task.title || task.testo;
 
     li.appendChild(testo);
 
@@ -2372,8 +3120,10 @@ function updateDailyPlanCompletionState(task, completed) {
 
   plan.mattina = sections.mattina;
   plan.pomeriggio = sections.pomeriggio;
-  plan.restaDaFareOggi = sections.restaDaFareOggi;
-  plan.seAvanzaTempo = sections.seAvanzaTempo;
+  plan.sera = sections.sera;
+  plan.restaDaFareOggi = sections.sera;
+  plan.daRimandare = sections.daRimandare;
+  plan.seAvanzaTempo = sections.daRimandare;
   plan.totali = computeDailyPlanTotals(plan);
   var sourceTasks = getSavedTasksForPlanning();
   plan.meta = {
@@ -2403,6 +3153,7 @@ function updatePlannerTaskFromCard(task, card, checkbox, completed) {
 
 function appendPlannerCompletionControl(card, task) {
   if (!card || !task) return;
+  if (isPlannerEvent(task) || isPlannerDeadline(task)) return;
 
   var wrapper = document.createElement("label");
   wrapper.className = "planner-complete-control";
@@ -2436,18 +3187,26 @@ function getDailyPlanSections(plan) {
   var piano = plan || {};
   var mattina = Array.isArray(piano.mattina) ? piano.mattina.slice() : [];
   var pomeriggio = Array.isArray(piano.pomeriggio) ? piano.pomeriggio.slice() : [];
-  var restaDaFareOggi = Array.isArray(piano.restaDaFareOggi) ? piano.restaDaFareOggi.slice() : [];
-  var seAvanzaTempo = Array.isArray(piano.seAvanzaTempo) ? piano.seAvanzaTempo.slice() : [];
+  var sera = Array.isArray(piano.sera) ? piano.sera.slice() : [];
+  var daRimandare = Array.isArray(piano.daRimandare) ? piano.daRimandare.slice() : [];
 
-  if (restaDaFareOggi.length === 0 && Array.isArray(piano.restaOggi)) {
-    restaDaFareOggi = piano.restaOggi.slice();
+  if (sera.length === 0 && Array.isArray(piano.restaDaFareOggi)) {
+    sera = piano.restaDaFareOggi.slice();
   }
 
-  if (seAvanzaTempo.length === 0 && Array.isArray(piano.extra)) {
-    seAvanzaTempo = piano.extra.slice();
+  if (sera.length === 0 && Array.isArray(piano.restaOggi)) {
+    sera = piano.restaOggi.slice();
   }
 
-  if (mattina.length === 0 && pomeriggio.length === 0 && restaDaFareOggi.length === 0 && Array.isArray(piano.daFareOggi)) {
+  if (daRimandare.length === 0 && Array.isArray(piano.seAvanzaTempo)) {
+    daRimandare = piano.seAvanzaTempo.slice();
+  }
+
+  if (daRimandare.length === 0 && Array.isArray(piano.extra)) {
+    daRimandare = piano.extra.slice();
+  }
+
+  if (mattina.length === 0 && pomeriggio.length === 0 && sera.length === 0 && Array.isArray(piano.daFareOggi)) {
     var taskOggi = piano.daFareOggi.slice();
     var splitIndex = Math.ceil(taskOggi.length / 2);
     mattina = taskOggi.slice(0, splitIndex);
@@ -2457,8 +3216,10 @@ function getDailyPlanSections(plan) {
   return {
     mattina: mattina,
     pomeriggio: pomeriggio,
-    restaDaFareOggi: restaDaFareOggi,
-    seAvanzaTempo: seAvanzaTempo
+    sera: sera,
+    restaDaFareOggi: sera,
+    daRimandare: daRimandare,
+    seAvanzaTempo: daRimandare
   };
 }
 
@@ -2810,13 +3571,13 @@ function renderDailyPlan(plan, showEmptyState) {
   var blocchi = [
     { id: "blocco-mattina", listId: "lista-mattina", items: sezioniPiano.mattina },
     { id: "blocco-pomeriggio", listId: "lista-pomeriggio", items: sezioniPiano.pomeriggio },
-    { id: "blocco-resta-da-fare-oggi", listId: "lista-resta-da-fare-oggi", items: sezioniPiano.restaDaFareOggi },
-    { id: "blocco-se-avanza-tempo", listId: "lista-se-avanza-tempo", items: sezioniPiano.seAvanzaTempo }
+    { id: "blocco-resta-da-fare-oggi", listId: "lista-resta-da-fare-oggi", items: sezioniPiano.sera },
+    { id: "blocco-se-avanza-tempo", listId: "lista-se-avanza-tempo", items: sezioniPiano.daRimandare }
   ];
   var haContenuto = false;
   var taskPianificati = normalizedPlan && normalizedPlan.totali
-    ? (normalizedPlan.totali.taskMattina || 0) + (normalizedPlan.totali.taskPomeriggio || 0) + (normalizedPlan.totali.taskRestaDaFareOggi || 0)
-    : getIncompletePlanTasks(sezioniPiano.mattina).length + getIncompletePlanTasks(sezioniPiano.pomeriggio).length + getIncompletePlanTasks(sezioniPiano.restaDaFareOggi).length;
+    ? (normalizedPlan.totali.taskMattina || 0) + (normalizedPlan.totali.taskPomeriggio || 0) + (normalizedPlan.totali.taskSera || normalizedPlan.totali.taskRestaDaFareOggi || 0)
+    : getIncompletePlanTasks(sezioniPiano.mattina).length + getIncompletePlanTasks(sezioniPiano.pomeriggio).length + getIncompletePlanTasks(sezioniPiano.sera).length;
 
   if (!sezione) {
     renderFocus(normalizedPlan);
@@ -2847,10 +3608,11 @@ function renderDailyPlan(plan, showEmptyState) {
     if (normalizedPlan && haContenuto) {
       renderDailyPlanSummaryChips(
         summaryChips,
-        taskPianificati,
-        normalizedPlan.totali ? normalizedPlan.totali.minutiMattina || 0 : 0,
-        normalizedPlan.totali ? normalizedPlan.totali.minutiPomeriggio || 0 : 0
-      );
+	        taskPianificati,
+	        normalizedPlan.totali ? normalizedPlan.totali.minutiMattina || 0 : 0,
+	        normalizedPlan.totali ? normalizedPlan.totali.minutiPomeriggio || 0 : 0,
+	        normalizedPlan.totali ? normalizedPlan.totali.minutiSera || 0 : 0
+	      );
       summaryChips.classList.remove("nascosto");
     } else {
       summaryChips.innerHTML = "";
@@ -2872,11 +3634,11 @@ function refreshDailyPlanIfPresent() {
   var plan = buildDailyPlan(tasks);
   var sezioniPiano = getDailyPlanSections(plan);
   var savedPlan = saveDailyPlan(plan, tasks);
-  renderDailyPlan(savedPlan, sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length + sezioniPiano.restaDaFareOggi.length + sezioniPiano.seAvanzaTempo.length === 0);
+  renderDailyPlan(savedPlan, sezioniPiano.mattina.length + sezioniPiano.pomeriggio.length + sezioniPiano.sera.length + sezioniPiano.daRimandare.length === 0);
   return savedPlan;
 }
 
-function ensureDailyPlanForCurrentTasks(showEmptyState) {
+async function ensureDailyPlanForCurrentTasks(showEmptyState) {
   var savedPlan = loadDailyPlan();
 
   if (!canUseScopedPlanningData()) {
@@ -2887,7 +3649,7 @@ function ensureDailyPlanForCurrentTasks(showEmptyState) {
   var tasks = getSavedTasksForPlanning();
 
   if (isDailyPlanStale(savedPlan, tasks)) {
-    savedPlan = saveDailyPlan(buildDailyPlan(tasks), tasks);
+    savedPlan = saveDailyPlan(await buildDailyPlanForCurrentUser(tasks), tasks);
   }
 
   renderDailyPlan(savedPlan, !!showEmptyState);
@@ -2903,10 +3665,10 @@ function navigateToDailyPlanPage() {
   window.location.href = targetUrl;
 }
 
-function organizeDay() {
+async function organizeDay() {
   closeAccountMenu();
   var tasks = getSavedTasksForPlanning();
-  var plan = buildDailyPlan(tasks);
+  var plan = await buildDailyPlanForCurrentUser(tasks);
   var savedPlan = saveDailyPlan(plan, tasks);
   renderDailyPlan(savedPlan, true);
 
@@ -3727,22 +4489,54 @@ function normalizzaEnergiaStimata(valore) {
 
 function normalizzaAzioneSalvata(azione) {
   if (!azione || typeof azione !== "object") {
-    return { testo: "", priorita: "bassa", durataStimataMinuti: null, energiaStimata: null, time: null, userId: null, syncedToCalendar: false };
+    return {
+      testo: "",
+      title: "",
+      priorita: "bassa",
+      durataStimataMinuti: null,
+      duration: null,
+      durationMinutes: null,
+      energiaStimata: null,
+      time: null,
+      type: "task",
+      activityType: "task",
+      userId: null,
+      syncedToCalendar: false
+    };
   }
 
+  var duration = normalizzaDurataStimata(azione.durataStimataMinuti || azione.durationMinutes || azione.duration);
+  var type = normalizePlannerActivityType(azione.type || azione.activityType || (azione.isHabit ? "habit" : "task"));
+
   return {
-    testo: String(azione.testo || "").trim(),
+    testo: String(azione.testo || azione.title || "").trim(),
+    title: String(azione.title || azione.testo || "").trim(),
     priorita: azione.priorita || "bassa",
     scadenzaOriginale: azione.scadenzaOriginale || null,
-    dataISO: azione.dataISO || null,
-    time: normalizzaOrario(azione.time),
-    durataStimataMinuti: normalizzaDurataStimata(azione.durataStimataMinuti),
+    dataISO: azione.dataISO || azione.date || null,
+    time: normalizzaOrario(azione.time || azione.startTime),
+    startTime: normalizzaOrario(azione.startTime || azione.time),
+    endTime: normalizzaOrario(azione.endTime),
+    durataStimataMinuti: duration,
+    duration: duration,
+    durationMinutes: duration,
     energiaStimata: normalizzaEnergiaStimata(azione.energiaStimata),
     completato: azione.completato === true,
     completedAt: azione.completedAt || null,
     aggiunta: azione.aggiunta || null,
     id: azione.id || null,
     userId: azione.userId || null,
+    type: type,
+    activityType: type,
+    indicativeTimeSlot: azione.indicativeTimeSlot || null,
+    importanceScore: scoreAttivitaParser(azione.importanceScore, priorityToActivityScore(azione.priorita)),
+    urgencyScore: scoreAttivitaParser(azione.urgencyScore, priorityToActivityScore(azione.priorita)),
+    energyRequiredScore: scoreAttivitaParser(azione.energyRequiredScore, energyToActivityScore(azione.energiaStimata)),
+    flexibilityScore: scoreAttivitaParser(azione.flexibilityScore, type === "task" ? 80 : 10),
+    category: azione.category || "other",
+    dependencies: Array.isArray(azione.dependencies) ? azione.dependencies.slice() : [],
+    why: azione.why || azione.whyChosen || "",
+    whyDeferred: azione.whyDeferred || "",
     syncedToCalendar: azione.syncedToCalendar === true
   };
 }
@@ -3861,23 +4655,130 @@ function propagaDateDiFrase(testoOriginale, risultato) {
   return output;
 }
 
+function normalizzaDataISOParser(valore) {
+  var raw = String(valore || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
+function scoreAttivitaParser(valore, fallback) {
+  var parsed = parseInt(valore, 10);
+  if (isNaN(parsed)) return fallback;
+  return Math.max(0, Math.min(100, parsed));
+}
+
+function prioritaDaScoreAttivita(attivita) {
+  var urgenza = scoreAttivitaParser(attivita && attivita.urgencyScore, 20);
+  var importanza = scoreAttivitaParser(attivita && attivita.importanceScore, 20);
+  var score = Math.max(urgenza, importanza);
+
+  if (score >= 67) return "alta";
+  if (score >= 34) return "media";
+  return "bassa";
+}
+
+function energiaDaScoreAttivita(attivita) {
+  var score = scoreAttivitaParser(attivita && attivita.energyRequiredScore, 35);
+
+  if (score >= 67) return "alta";
+  if (score >= 34) return "media";
+  return "bassa";
+}
+
+function tipoAttivitaParser(attivita) {
+  var raw = String(attivita && attivita.type ? attivita.type : "").trim().toLowerCase();
+  var date = normalizzaDataISOParser(attivita && attivita.date);
+  var startTime = normalizzaOrario(attivita && attivita.startTime);
+
+  if (date && startTime) return "event";
+  if (raw === "deadline") return "deadline";
+  if (raw === "task") return "task";
+  if (raw === "event") return date ? "deadline" : "task";
+  if (date && !startTime) return "deadline";
+  return "task";
+}
+
+function aggiungiAttivitaStrutturata(azioni, scadenze, attivita) {
+  if (!attivita || typeof attivita !== "object") return;
+
+  var titolo = String(attivita.title || "").trim();
+  if (!titolo) return;
+
+  var tipo = tipoAttivitaParser(attivita);
+  var dataISO = normalizzaDataISOParser(attivita.date);
+  var startTime = normalizzaOrario(attivita.startTime);
+
+  if (tipo === "deadline") {
+    if (dataISO) {
+      aggiungiScadenzaUnica(scadenze, titolo, {
+        originale: dataISO,
+        dataRisolta: dataISO
+      });
+    }
+    return;
+  }
+
+  aggiungiAzioneUnica(azioni, normalizzaAzioneSalvata({
+    id: attivita.id || null,
+    testo: titolo,
+    title: titolo,
+    type: tipo,
+    activityType: tipo,
+    priorita: prioritaDaScoreAttivita(attivita),
+    scadenzaOriginale: dataISO,
+    dataISO: dataISO,
+    time: tipo === "event" ? startTime : null,
+    startTime: tipo === "event" ? startTime : null,
+    endTime: attivita.endTime || null,
+    indicativeTimeSlot: attivita.indicativeTimeSlot || null,
+    durataStimataMinuti: tipo === "event" || tipo === "task" ? attivita.durationMinutes : null,
+    durationMinutes: tipo === "event" || tipo === "task" ? attivita.durationMinutes : null,
+    energiaStimata: energiaDaScoreAttivita(attivita),
+    importanceScore: attivita.importanceScore,
+    urgencyScore: attivita.urgencyScore,
+    energyRequiredScore: attivita.energyRequiredScore,
+    flexibilityScore: attivita.flexibilityScore,
+    category: attivita.category || "other",
+    dependencies: Array.isArray(attivita.dependencies) ? attivita.dependencies.slice() : []
+  }));
+}
+
 // Converte la risposta del backend nel formato usato dal rendering
 function convertiRispostaBackend(data) {
   var azioni = [];
   var scadenze = [];
   var daPianificare = [];
+  var hasStructuredActivities = data && data.activities && Array.isArray(data.activities);
 
-  if (data.azioni && Array.isArray(data.azioni)) {
+  if (hasStructuredActivities) {
+    for (var aIndex = 0; aIndex < data.activities.length; aIndex++) {
+      aggiungiAttivitaStrutturata(azioni, scadenze, data.activities[aIndex]);
+    }
+  }
+
+  if (!hasStructuredActivities && data.azioni && Array.isArray(data.azioni)) {
     for (var i = 0; i < data.azioni.length; i++) {
       var a = data.azioni[i];
       aggiungiAzioneUnica(azioni, normalizzaAzioneSalvata({
         testo: a.testo || "",
+        title: a.title || a.testo || "",
+        type: a.type || a.activityType || "task",
+        activityType: a.activityType || a.type || "task",
         priorita: a.priorita || "bassa",
         scadenzaOriginale: a.scadenzaOriginale || null,
         dataISO: a.dataISO || null,
         time: a.time || null,
+        startTime: a.startTime || a.time || null,
+        endTime: a.endTime || null,
+        indicativeTimeSlot: a.indicativeTimeSlot || null,
         durataStimataMinuti: a.durataStimataMinuti,
-        energiaStimata: a.energiaStimata
+        durationMinutes: a.durationMinutes || a.durataStimataMinuti,
+        energiaStimata: a.energiaStimata,
+        importanceScore: a.importanceScore,
+        urgencyScore: a.urgencyScore,
+        energyRequiredScore: a.energyRequiredScore,
+        flexibilityScore: a.flexibilityScore,
+        category: a.category,
+        dependencies: a.dependencies
       }));
 
       if (a.scadenzaOriginale) {
